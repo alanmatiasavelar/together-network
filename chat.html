@@ -143,12 +143,12 @@ function renderMessages(){
     ? `<p class="credits-note">${t('chat.empty_state')}</p>`
     : messages.map(m => {
         const own = currentUser && m.user_id === currentUser.id;
-        const time = new Date(m.created_at).toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit' });
+        const when = new Date(m.created_at).toLocaleString(currentLang, { dateStyle: 'medium', timeStyle: 'short' });
         return `
           <div class="chat-msg ${own ? 'own' : 'other'}">
-            ${!own ? `<div class="chat-msg-name">${escapeHTML(m.user_name)}</div>` : ''}
+            <div class="chat-msg-name">${escapeHTML(m.user_name)}</div>
             <div class="chat-msg-bubble">${escapeHTML(m.body)}</div>
-            <div class="chat-msg-time">${escapeHTML(time)}</div>
+            <div class="chat-msg-time">${escapeHTML(when)}</div>
           </div>
         `;
       }).join('');
