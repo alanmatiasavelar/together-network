@@ -6,10 +6,7 @@
    ==================================================================== */
 const SUPABASE_URL = "https://pjkdnadlcmnmvoyqbtpk.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_RL_-FCEJ8FWmZKb_malW5g_ZoBEVJAL";
-const PAYPAL_CLIENT_ID = "YOUR_PAYPAL_CLIENT_ID";
 /* ==================================================================== */
-
-const isPaypalConfigured = !PAYPAL_CLIENT_ID.includes('YOUR_');
 
 const isConfigured = !SUPABASE_URL.includes('YOUR_') && !SUPABASE_ANON_KEY.includes('YOUR_');
 

@@ -108,13 +108,20 @@ function renderAlreadyPremium(){
 const PAYMENT_EMAIL = 'aolbr_mail@yahoo.com.br';
 
 function renderPaymentForm(user){
-  const paypalBlock = isPaypalConfigured
-    ? `
-      <div id="paypal-button-container"></div>
-      <p class="form-msg" id="paypalMsg"></p>
-      <p class="premium-note">${t('premium.disclosure')}</p>
-    `
-    : `<p class="form-msg error">${t('premium.not_connected')}</p>`;
+  const paypalBlock = `
+    <form action="https://www.paypal.com/cgi-bin/webscr" method="post" target="_blank" class="paypal-classic-form">
+      <input type="hidden" name="cmd" value="_xclick">
+      <input type="hidden" name="business" value="${PAYMENT_EMAIL}">
+      <input type="hidden" name="item_name" value="Together Premium — unlimited projects">
+      <input type="hidden" name="amount" value="2.00">
+      <input type="hidden" name="currency_code" value="USD">
+      <input type="hidden" name="no_shipping" value="1">
+      <button type="submit" class="btn btn-primary btn-small">${t('premium.pay_with_paypal')}</button>
+    </form>
+    <button class="btn btn-ghost btn-small" id="confirmPaypalBtn" type="button" style="margin-top:8px;">${t('premium.confirm_paypal_sent')}</button>
+    <p class="form-msg" id="paypalMsg"></p>
+    <p class="premium-note">${t('premium.paypal_disclosure')}</p>
+  `;
 
   card.innerHTML = `
     <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
@@ -150,8 +157,27 @@ function renderPaymentForm(user){
 
     <p class="premium-note">${t('premium.same_email_note')} ${PAYMENT_EMAIL}</p>
   `;
-  if (isPaypalConfigured) loadPaypalSdkAndRender(user);
+  wirePaypalCheckout(user);
   wirePixCheckout(user);
+}
+
+function wirePaypalCheckout(user){
+  const confirmBtn = document.getElementById('confirmPaypalBtn');
+  if (!confirmBtn) return;
+  confirmBtn.addEventListener('click', async () => {
+    const msg = document.getElementById('paypalMsg');
+    confirmBtn.disabled = true;
+    msg.textContent = t('premium.confirming');
+    msg.className = 'form-msg';
+    const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
+    confirmBtn.disabled = false;
+    if (error){
+      msg.textContent = `${t('premium.err_account_update')} (${error.message}).`;
+      msg.className = 'form-msg error';
+      return;
+    }
+    renderSuccess(null);
+  });
 }
 
 function wirePixCheckout(user){
@@ -202,70 +228,6 @@ function renderForState(){
   if (currentState === 'loggedOut') renderLoggedOut();
   else if (currentState === 'alreadyPremium') renderAlreadyPremium();
   else if (currentState === 'paymentForm') renderPaymentForm(stateArgs);
-}
-
-function loadPaypalSdkAndRender(user){
-  const msg = document.getElementById('paypalMsg');
-  const existing = document.getElementById('paypal-sdk-script');
-  if (existing) existing.remove();
-  const s = document.createElement('script');
-  s.id = 'paypal-sdk-script';
-  s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(PAYPAL_CLIENT_ID)}&currency=USD`;
-  s.onload = () => renderPaypalButtons(user);
-  s.onerror = () => { msg.textContent = t('premium.err_load'); msg.className = 'form-msg error'; };
-  document.head.appendChild(s);
-}
-
-function renderPaypalButtons(user){
-  const msg = document.getElementById('paypalMsg');
-  if (!window.paypal || !window.paypal.Buttons){
-    msg.textContent = t('premium.err_init');
-    msg.className = 'form-msg error';
-    return;
-  }
-  window.paypal.Buttons({
-    style: { layout: 'vertical', shape: 'pill', label: 'pay' },
-    createOrder: function(data, actions){
-      return actions.order.create({
-        purchase_units: [{
-          description: 'Together Premium — unlimited projects',
-          amount: { value: '2.00', currency_code: 'USD' }
-        }]
-      });
-    },
-    onApprove: async function(data, actions){
-      msg.textContent = t('premium.confirming');
-      msg.className = 'form-msg';
-      let order;
-      try {
-        order = await actions.order.capture();
-      } catch (err) {
-        msg.textContent = t('premium.err_incomplete');
-        msg.className = 'form-msg error';
-        return;
-      }
-      if (!order || order.status !== 'COMPLETED'){
-        msg.textContent = t('premium.err_not_completed');
-        msg.className = 'form-msg error';
-        return;
-      }
-      const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
-      if (error){
-        msg.textContent = `${t('premium.err_account_update')} (${error.message}). ${t('premium.err_save_order')} ${order.id}`;
-        msg.className = 'form-msg error';
-        return;
-      }
-      renderSuccess(order.id);
-    },
-    onCancel: function(){
-      msg.textContent = t('premium.cancelled');
-      msg.className = 'form-msg';
-    },
-    onError: function(err){
-      msg.textContent = t('premium.err_generic');
-      msg.className = 'form-msg error';
-    }
-  }).render('#paypal-button-container');
 }
 
 async function init(){
