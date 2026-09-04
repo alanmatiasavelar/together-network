@@ -480,18 +480,21 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 .dash-task-row .task-title{font-weight:600;font-size:14.5px;}
 .dash-task-row .task-project{font-size:12px;color:var(--ink-soft);}
 
-/* ---------- AI assistant tab ---------- */
-.ai-chat{max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;}
-.ai-msg{display:flex;}
-.ai-msg.assistant{justify-content:flex-start;}
-.ai-msg.user{justify-content:flex-end;}
-.ai-msg-bubble{
-  max-width:80%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;
+/* ---------- Team chat page ---------- */
+.chat-log{max-height:60vh;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px;}
+.chat-msg{display:flex;flex-direction:column;max-width:80%;}
+.chat-msg.own{align-self:flex-end;align-items:flex-end;}
+.chat-msg.other{align-self:flex-start;align-items:flex-start;}
+.chat-msg-name{font-size:12px;color:var(--ink-soft);margin-bottom:2px;padding:0 4px;}
+.chat-msg-bubble{
+  padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word;
 }
-.ai-msg.assistant .ai-msg-bubble{background:var(--mist);color:var(--ink);border-bottom-left-radius:4px;}
-.ai-msg.user .ai-msg-bubble{background:var(--blue);color:#fff;border-bottom-right-radius:4px;}
-#scanResults label{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;font-size:14px;}
-#scanResults input[type="checkbox"]{width:auto;margin-top:3px;}
+.chat-msg.other .chat-msg-bubble{background:var(--mist);color:var(--ink);border-bottom-left-radius:4px;}
+.chat-msg.own .chat-msg-bubble{background:var(--blue);color:#fff;border-bottom-right-radius:4px;}
+.chat-msg-time{font-size:11px;color:var(--ink-soft);margin-top:2px;padding:0 4px;}
+.chat-form{display:flex;gap:8px;margin-top:14px;}
+.chat-form textarea{flex:1;resize:none;}
+.chat-form button{align-self:flex-end;}
 
 /* ---------- Collaborators & credits on a project card ---------- */
 .collab-btn{
@@ -612,9 +615,10 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 
 /* ---------- Project page tabs ---------- */
 .tab-bar{display:flex;flex-wrap:wrap;gap:6px;background:var(--mist);border-radius:100px;padding:4px;margin:28px 0 24px;max-width:100%;}
-.tab-bar button{
+.tab-bar button,.tab-bar a{
   border:none;background:none;padding:9px 20px;border-radius:100px;cursor:pointer;
   font-family:'Space Grotesk';font-weight:600;font-size:14px;color:var(--ink-soft);white-space:nowrap;
+  text-decoration:none;display:inline-block;
 }
 .tab-bar button.active{background:var(--panel);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,0.06);}
 .tab-panel[hidden]{display:none;}

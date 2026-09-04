@@ -1067,3 +1067,47 @@ create policy "Uploaders or managers can delete task document files" on storage.
     bucket_id = 'task-documents'
     and (owner = auth.uid() or public.is_project_owner(((storage.foldername(name))[1])::uuid))
   );
+
+-- ---------------------------------------------------------------------------
+-- TEAM CHAT: a live chat thread per project, visible only to the team
+-- (owner + approved collaborators). Powered by Supabase Realtime so new
+-- messages appear without a page refresh. Replaces the old AI assistant tab.
+-- ---------------------------------------------------------------------------
+create table if not exists project_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  user_id uuid not null default auth.uid(),
+  user_name text not null,
+  body text not null check (char_length(trim(body)) > 0),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_chat_messages_project_id_created_at_idx
+  on project_chat_messages (project_id, created_at);
+
+alter table project_chat_messages enable row level security;
+
+drop policy if exists "Team can read chat messages" on project_chat_messages;
+create policy "Team can read chat messages" on project_chat_messages
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can send chat messages" on project_chat_messages;
+create policy "Team can send chat messages" on project_chat_messages
+  for insert with check (auth.uid() = user_id and public.is_project_team_member(project_id));
+
+drop policy if exists "Authors or the manager can delete chat messages" on project_chat_messages;
+create policy "Authors or the manager can delete chat messages" on project_chat_messages
+  for delete using (auth.uid() = user_id or public.is_project_owner(project_id));
+
+-- registers the table with Supabase Realtime so chat.html's postgres_changes
+-- subscription receives new messages live; guarded so re-running this file
+-- doesn't error if it's already registered.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'project_chat_messages'
+  ) then
+    alter publication supabase_realtime add table project_chat_messages;
+  end if;
+end $$;

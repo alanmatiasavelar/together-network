@@ -74,7 +74,6 @@ let editingTaskId = null;
 let editingEventId = null;
 let editingFeedPostId = null;
 let editingCostId = null;
-let aiMessages = [];
 
 function renderNav(){
   if (currentUser){
@@ -226,7 +225,7 @@ function render(){
       <button data-tab="polls" class="${activeTab === 'polls' ? 'active' : ''}">${t('project.tab_polls')}</button>
       <button data-tab="events" class="${activeTab === 'events' ? 'active' : ''}">${t('project.tab_events')}</button>
       <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
-      <button data-tab="ai" class="${activeTab === 'ai' ? 'active' : ''}">${t('project.tab_ai')}</button>
+      <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
     <div class="tab-panel" data-panel="goals" ${activeTab !== 'goals' ? 'hidden' : ''}>${renderGoalsPanel(isOwner)}</div>
@@ -235,7 +234,6 @@ function render(){
     <div class="tab-panel" data-panel="polls" ${activeTab !== 'polls' ? 'hidden' : ''}>${renderPollsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="events" ${activeTab !== 'events' ? 'hidden' : ''}>${renderEventsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="costs" ${activeTab !== 'costs' ? 'hidden' : ''}>${renderCostsPanel()}</div>
-    <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
   `;
 
   // --- Coordination ---
@@ -517,90 +515,6 @@ function renderCostsPanel(){
     `;
   }
   return html;
-}
-
-function renderAiMessages(){
-  const box = document.getElementById('aiChatBox');
-  if (!box) return;
-  box.innerHTML = aiMessages.length === 0
-    ? `<p class="credits-note">${t('ai.empty_state')}</p>`
-    : aiMessages.map(m => `
-        <div class="ai-msg ${m.role}"><div class="ai-msg-bubble">${escapeHTML(m.content)}</div></div>
-      `).join('');
-  box.scrollTop = box.scrollHeight;
-}
-
-function renderAiPanel(){
-  return `
-    <p class="credits-note" style="margin-bottom:16px;">${t('ai.setup_note')}</p>
-    <div class="ai-chat" id="aiChatBox"></div>
-    <form id="aiChatForm" class="auth-form" style="margin-top:14px;">
-      <textarea name="message" rows="2" placeholder="${t('ai.ask_placeholder')}" required></textarea>
-      <button class="btn btn-primary btn-small" type="submit">${t('ai.send')}</button>
-      <p class="form-msg" id="aiChatMsg"></p>
-    </form>
-
-    <div class="section-block" style="margin-top:28px;">
-      <h3 style="font-size:16px;margin-bottom:8px;">${t('ai.scan_receipt_heading')}</h3>
-      <p class="credits-note" style="margin-bottom:10px;">${t('ai.scan_receipt_desc')}</p>
-      <form id="scanReceiptForm" class="auth-form">
-        <input type="file" name="receipt_file" accept="image/*" required>
-        <button class="btn btn-ghost btn-small" type="submit">${t('ai.scan_button')}</button>
-        <p class="form-msg" id="scanMsg"></p>
-      </form>
-      <div id="scanResults"></div>
-    </div>
-  `;
-}
-
-function fileToBase64(file){
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function renderScanResults(items){
-  const container = document.getElementById('scanResults');
-  if (!container) return;
-  if (!items.length){
-    container.innerHTML = `<p class="credits-note">${t('ai.no_items_found')}</p>`;
-    return;
-  }
-  container.innerHTML = `
-    <p class="credits-note" style="margin:10px 0;">${t('ai.review_items')}</p>
-    ${items.map((it, idx) => `
-      <label>
-        <input type="checkbox" data-scan-item="${idx}" checked>
-        <span>${escapeHTML(it.description || '')} — $${Number(it.amount || 0).toFixed(2)}${it.category ? ' (' + escapeHTML(it.category) + ')' : ''}</span>
-      </label>
-    `).join('')}
-    <button class="btn btn-primary btn-small" id="confirmScanBtn" type="button">${t('ai.add_selected')}</button>
-    <p class="form-msg" id="confirmScanMsg"></p>
-  `;
-
-  document.getElementById('confirmScanBtn').addEventListener('click', async () => {
-    const msgEl = document.getElementById('confirmScanMsg');
-    const checkedIdx = [...container.querySelectorAll('[data-scan-item]:checked')].map(cb => Number(cb.dataset.scanItem));
-    if (!checkedIdx.length) return;
-    const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
-    const rows = checkedIdx.map(idx => ({
-      project_id: projectId,
-      description: items[idx].description || 'Receipt item',
-      amount: Number(items[idx].amount) || 0,
-      cost_date: items[idx].date || null,
-      category: items[idx].category || null,
-      added_by: currentUser.id,
-      added_by_name: userName
-    }));
-    const { error } = await supabaseClient.from('project_costs').insert(rows);
-    if (error){ msgEl.textContent = error.message; msgEl.className = 'form-msg error'; return; }
-    msgEl.textContent = t('ai.items_added');
-    msgEl.className = 'form-msg ok';
-    container.innerHTML = '';
-  });
 }
 
 function renderGoalsPanel(isOwner){
@@ -1101,56 +1015,6 @@ function wireEvents(){
     loadProject();
   }));
 
-  // --- AI assistant ---
-  if (document.getElementById('aiChatBox')) renderAiMessages();
-
-  const aiChatForm = document.getElementById('aiChatForm');
-  if (aiChatForm) aiChatForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('aiChatMsg');
-    const fd = new FormData(e.target);
-    const text = (fd.get('message') || '').trim();
-    if (!text) return;
-    aiMessages.push({ role: 'user', content: text });
-    renderAiMessages();
-    e.target.reset();
-    msg.textContent = t('ai.thinking');
-    msg.className = 'form-msg';
-    const { data, error } = await supabaseClient.functions.invoke('ai-assistant', {
-      body: { action: 'chat', projectId, messages: aiMessages.map(m => ({ role: m.role, content: m.content })) }
-    });
-    if (error || data?.error){
-      msg.textContent = (data && data.error) || (error && error.message) || t('ai.error_generic');
-      msg.className = 'form-msg error';
-      return;
-    }
-    aiMessages.push({ role: 'assistant', content: data.reply || '' });
-    msg.textContent = '';
-    renderAiMessages();
-  });
-
-  const scanReceiptForm = document.getElementById('scanReceiptForm');
-  if (scanReceiptForm) scanReceiptForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('scanMsg');
-    msg.textContent = ''; msg.className = 'form-msg';
-    const file = e.target.querySelector('input[name="receipt_file"]').files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.file_not_image'); msg.className = 'form-msg error'; return; }
-    if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.file_too_large'); msg.className = 'form-msg error'; return; }
-    msg.textContent = t('ai.scanning');
-    const base64 = await fileToBase64(file);
-    const { data, error } = await supabaseClient.functions.invoke('ai-assistant', {
-      body: { action: 'scan_receipt', projectId, imageBase64: base64, mediaType: file.type }
-    });
-    if (error || data?.error){
-      msg.textContent = (data && data.error) || (error && error.message) || t('ai.error_generic');
-      msg.className = 'form-msg error';
-      return;
-    }
-    msg.textContent = '';
-    renderScanResults(data.items || []);
-  });
 }
 
 async function init(){
