@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Task — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to view real projects.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding-top:40px;padding-bottom:60px;max-width:760px;">
+    <a class="auth-back" id="backLink" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <div id="pageContent"><p data-i18n="common.loading">Loading…</p></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  if (task) render();
+}
+
+const params = new URLSearchParams(window.location.search);
+const taskId = params.get('id');
+const navAuth = document.getElementById('navAuth');
+const content = document.getElementById('pageContent');
+
+let currentUser = null;
+let task = null;
+let history = [];
+let documents = [];
+let signedUrls = {};
+let editingDocId = null;
+
+const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10MB
+
+function renderNav(){
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost btn-small" href="dashboard.html">${t('nav.dashboard')}</a>
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+  }
+}
+
+async function loadTask(){
+  if (!taskId){
+    content.innerHTML = `<p class="form-msg error">${t('task.not_found')}</p>`;
+    return;
+  }
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data, error } = await supabaseClient
+    .from('project_tasks')
+    .select('*, projects(id, title), task_assignees(user_id, profiles(display_name))')
+    .eq('id', taskId)
+    .single();
+
+  if (error || !data){
+    content.innerHTML = `<p class="form-msg error">${t('task.not_found')}</p>`;
+    return;
+  }
+  task = data;
+  document.getElementById('backLink').href = `project.html?id=${task.project_id}`;
+  document.getElementById('backLink').textContent = t('task.back_to_project');
+
+  const [{ data: historyData }, { data: docsData }] = await Promise.all([
+    supabaseClient.from('task_status_history').select('*').eq('task_id', taskId).order('changed_at', { ascending: true }),
+    supabaseClient.from('task_documents').select('*').eq('task_id', taskId).order('created_at', { ascending: false })
+  ]);
+  history = historyData || [];
+  documents = docsData || [];
+
+  signedUrls = {};
+  await Promise.all(documents.map(async (doc) => {
+    const { data: signed } = await supabaseClient.storage.from('task-documents').createSignedUrl(doc.file_path, 3600);
+    if (signed) signedUrls[doc.id] = signed.signedUrl;
+  }));
+
+  render();
+}
+
+function renderHistoryTimeline(){
+  if (!history.length) return `<p class="credits-note">—</p>`;
+  return `<div class="status-timeline">` + history.map(h => `
+    <div class="timeline-item">
+      <span class="status-badge ${h.status}">${t('project.col_' + h.status)}</span>
+      <span class="timeline-date">${escapeHTML(new Date(h.changed_at).toLocaleString(currentLang, { dateStyle: 'medium', timeStyle: 'short' }))}</span>
+      <span class="timeline-by">${t('project.created_by')} ${escapeHTML(h.changed_by_name)}</span>
+    </div>
+  `).join('') + `</div>`;
+}
+
+function renderDocuments(){
+  let html = '';
+  if (!documents.length){
+    html += `<p class="credits-note">${t('task.no_documents')}</p>`;
+  } else {
+    documents.forEach(doc => {
+      const canManage = currentUser && currentUser.id === doc.uploaded_by;
+      const sizeLabel = doc.file_size ? `${(doc.file_size / 1024).toFixed(0)} KB` : '';
+      html += `
+        <div class="doc-row">
+          <div>
+            <div class="doc-name">${escapeHTML(doc.file_name)}</div>
+            <div class="doc-meta">${t('task.uploaded')} ${escapeHTML(doc.uploaded_by_name)} · ${escapeHTML((doc.created_at || '').slice(0, 10))}${sizeLabel ? ' · ' + sizeLabel : ''}</div>
+          </div>
+          <div class="doc-actions">
+            ${signedUrls[doc.id] ? `<a class="btn btn-ghost btn-small" href="${escapeHTML(signedUrls[doc.id])}" target="_blank" rel="noopener noreferrer">${t('task.download')}</a>` : ''}
+            ${canManage ? `
+              <button class="icon-btn" data-edit-doc="${doc.id}">${t('common.edit')}</button>
+              <button class="icon-btn" data-delete-doc="${doc.id}">${t('common.delete')}</button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  if (currentUser){
+    const editingDoc = editingDocId ? documents.find(d => d.id === editingDocId) : null;
+    html += `
+      <details class="add-inline" ${editingDocId ? 'open' : ''} style="margin-top:14px;">
+        <summary>${editingDocId ? t('task.edit_doc') : t('task.upload_doc')}</summary>
+        <form id="docForm" class="auth-form" data-editing="${editingDocId || ''}">
+          ${editingDoc ? `<label>${t('task.file_name_label')}<input type="text" name="file_name" value="${escapeHTML(editingDoc.file_name)}" maxlength="200"></label>` : ''}
+          <label>${editingDoc ? t('task.replace_file_optional') : t('task.upload_doc')}<input type="file" name="doc_file" ${editingDoc ? '' : 'required'}></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingDocId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="docMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function render(){
+  const assignees = (task.task_assignees || []).map(a => a.profiles?.display_name || '?');
+  const dtLabel = task.due_date ? escapeHTML(task.due_date) : null;
+
+  const html = `
+    <p class="eyebrow">${t('task.workflow_title')}</p>
+    <h1 style="margin-top:8px;">${escapeHTML(task.title)}</h1>
+    ${task.description ? `<p class="project-desc">${escapeHTML(task.description)}</p>` : ''}
+    <div class="card-row" style="margin:14px 0;">
+      <span class="status-badge ${task.status}">${t('project.col_' + task.status)}</span>
+      ${dtLabel ? `<span class="chip">${t('project.due')} ${dtLabel}</span>` : ''}
+      ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
+    </div>
+    <p style="font-size:13px;color:var(--ink-soft);margin-bottom:28px;">
+      <a href="project.html?id=${task.project_id}">${escapeHTML(task.projects?.title || '')}</a>
+    </p>
+
+    <div class="section-block">
+      <h2>${t('task.status_history')}</h2>
+      ${renderHistoryTimeline()}
+    </div>
+
+    <div class="section-block">
+      <h2>${t('task.documents_heading')}</h2>
+      ${renderDocuments()}
+    </div>
+  `;
+  content.innerHTML = html;
+  wireEvents();
+}
+
+function wireEvents(){
+  const docForm = document.getElementById('docForm');
+  if (docForm) docForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('docMsg');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const editingId = e.target.dataset.editing;
+    const file = e.target.querySelector('input[name="doc_file"]').files[0];
+    const newFileName = fd.get('file_name');
+
+    if (file && file.size > 0 && file.size > MAX_DOC_BYTES){
+      msg.textContent = t('task.file_too_large_10mb');
+      msg.className = 'form-msg error';
+      return;
+    }
+
+    submitBtn.disabled = true;
+
+    if (editingId){
+      const payload = {};
+      if (newFileName) payload.file_name = newFileName;
+      if (file && file.size > 0){
+        msg.textContent = t('learnmore.uploading');
+        try {
+          const path = `${task.project_id}/${taskId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
+          const { error: upErr } = await supabaseClient.storage.from('task-documents').upload(path, file, { contentType: file.type || 'application/octet-stream' });
+          if (upErr) throw upErr;
+          payload.file_path = path;
+          payload.file_size = file.size;
+        } catch (err) {
+          msg.textContent = err.message || String(err);
+          msg.className = 'form-msg error';
+          submitBtn.disabled = false;
+          return;
+        }
+      }
+      const { error } = await supabaseClient.from('task_documents').update(payload).eq('id', editingId);
+      submitBtn.disabled = false;
+      if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+      editingDocId = null;
+      loadTask();
+      return;
+    }
+
+    if (!file || file.size === 0){
+      msg.textContent = t('task.file_too_large_10mb');
+      msg.className = 'form-msg error';
+      submitBtn.disabled = false;
+      return;
+    }
+    msg.textContent = t('learnmore.uploading');
+    let path;
+    try {
+      path = `${task.project_id}/${taskId}/${Date.now()}-${file.name.replace(/[^A-Za-z0-9_.-]/g, '_')}`;
+      const { error: upErr } = await supabaseClient.storage.from('task-documents').upload(path, file, { contentType: file.type || 'application/octet-stream' });
+      if (upErr) throw upErr;
+    } catch (err) {
+      msg.textContent = err.message || String(err);
+      msg.className = 'form-msg error';
+      submitBtn.disabled = false;
+      return;
+    }
+    const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    const { error } = await supabaseClient.from('task_documents').insert({
+      task_id: taskId, file_name: file.name, file_path: path, file_size: file.size,
+      uploaded_by: currentUser.id, uploaded_by_name: userName
+    });
+    submitBtn.disabled = false;
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    loadTask();
+  });
+
+  content.querySelectorAll('[data-edit-doc]').forEach(btn => btn.addEventListener('click', () => {
+    editingDocId = btn.dataset.editDoc;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-doc]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('task_documents').delete().eq('id', btn.dataset.deleteDoc);
+    loadTask();
+  }));
+}
+
+async function init(){
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  currentUser = session?.user || null;
+  renderNav();
+  await loadTask();
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    renderNav();
+    if (task) await loadTask();
+  });
+}
+init();
+</script>
+
+</body>
+</html>

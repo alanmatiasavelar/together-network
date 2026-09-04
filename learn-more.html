@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Learn more — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to view real projects.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding-top:40px;padding-bottom:60px;max-width:900px;">
+    <a class="auth-back" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <div id="pageContent"><p data-i18n="common.loading">Loading…</p></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  if (project) render();
+}
+
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('id');
+const navAuth = document.getElementById('navAuth');
+const content = document.getElementById('pageContent');
+
+let currentUser = null;
+let project = null;
+let editingPostId = null;
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
+const YOUTUBE_LINK_PATTERN = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//;
+
+async function uploadPostImage(file){
+  const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
+  const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${projectId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabaseClient.storage.from('project-post-images').upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('project-post-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function uploadQrImage(file, method){
+  const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
+  const ext = (extMatch ? extMatch[1] : 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+  const path = `${projectId}/qr-${method}-${Date.now()}.${ext}`;
+  const { error } = await supabaseClient.storage.from('project-post-images').upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('project-post-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+function renderNav(){
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost btn-small" href="dashboard.html">${t('nav.dashboard')}</a>
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+  }
+}
+
+async function loadProject(){
+  if (!projectId){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_specified')}</p>`;
+    return;
+  }
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data, error } = await supabaseClient
+    .from('projects')
+    .select('*, project_posts(*), project_supporters(user_id, amount)')
+    .eq('id', projectId)
+    .single();
+  if (error || !data){
+    content.innerHTML = `<p class="form-msg error">${t('project.load_error')} ${escapeHTML(error?.message || 'not found')}</p>`;
+    return;
+  }
+  project = data;
+  render();
+}
+
+const PAYMENT_METHODS = [
+  { key: 'paypal', column: 'paypal_qr_url', labelKey: 'learnmore.paypal' },
+  { key: 'zelle', column: 'zelle_qr_url', labelKey: 'learnmore.zelle' },
+  { key: 'pix', column: 'pix_qr_url', labelKey: 'learnmore.pix' }
+];
+
+function renderSupportSection(isOwner){
+  const supportRows = project.project_supporters || [];
+  const totalCredits = supportRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const mySupport = supportRows.find(s => s.user_id === currentUser?.id);
+  const peopleWord = supportRows.length === 1 ? t('feed.credits_person') : t('feed.credits_people');
+  const anyMethodSet = PAYMENT_METHODS.some(m => project[m.column]);
+
+  let html = `<div class="section-block"><h2>${t('project.support_heading')}</h2>`;
+  html += `
+    <div class="credits-block">
+      <span class="credits-total">$${totalCredits.toFixed(2)}</span> ${t('feed.credits_from')} ${supportRows.length} ${peopleWord}
+      <div class="credits-note">${t('feed.credits_note')}</div>
+    </div>
+  `;
+
+  if (!anyMethodSet && !isOwner){
+    html += `<p class="credits-note" style="margin-top:12px;">${t('learnmore.no_payment_methods')}</p>`;
+  } else {
+    html += `<p class="credits-note" style="margin:14px 0 8px;">${t('learnmore.payment_methods')}</p>`;
+    html += `<div class="qr-grid">`;
+    PAYMENT_METHODS.forEach(m => {
+      const qrUrl = project[m.column];
+      if (!qrUrl && !isOwner) return; // nothing to show for this method to a viewer
+      html += `<div class="qr-method"><h4>${t(m.labelKey)}</h4>`;
+      if (qrUrl){
+        html += `<img class="qr-image" src="${escapeHTML(qrUrl)}" alt="${t(m.labelKey)}">`;
+        html += `<p class="credits-note">${t('learnmore.scan_to_pay')}</p>`;
+      }
+      if (isOwner){
+        html += `
+          <details class="add-inline">
+            <summary>${qrUrl ? t('learnmore.replace_qr') : t('learnmore.upload_qr')}</summary>
+            <form class="qr-form" data-method="${m.key}" data-column="${m.column}">
+              <input type="file" name="qr_file" accept="image/*" required>
+              <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
+              <p class="form-msg" data-qr-msg></p>
+            </form>
+          </details>
+        `;
+        if (qrUrl) html += `<button class="icon-btn" data-remove-qr="${m.column}">${t('learnmore.remove_qr')}</button>`;
+      }
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (currentUser && anyMethodSet){
+    html += `
+      <form class="record-form" id="recordForm" style="margin-top:16px;">
+        <input type="number" name="amount" min="0" step="0.01" placeholder="$" value="${mySupport?.amount ?? ''}">
+        <button class="btn btn-ghost btn-small" type="submit">${mySupport ? t('common.update') : t('feed.log_sent')}</button>
+      </form>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function render(){
+  const isOwner = currentUser && currentUser.id === project.owner_id;
+  const posts = (project.project_posts || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+
+  let html = `
+    <div class="profile-header">
+      ${project.image_url ? `<img class="feed-card-image" src="${escapeHTML(project.image_url)}" alt="${escapeHTML(project.title)}" onerror="this.remove()">` : ''}
+      <h1>${escapeHTML(project.title)}</h1>
+      <p>${escapeHTML(project.pitch)}</p>
+      <p style="margin-top:14px;">
+        <span data-i18n="learnmore.private_page_note">${t('learnmore.private_page_note')}</span>
+        <a class="view-project-link" href="project.html?id=${projectId}">${t('learnmore.go_private')}</a>
+      </p>
+    </div>
+  `;
+
+  html += renderSupportSection(isOwner);
+
+  if (isOwner){
+    const editingPost = editingPostId ? posts.find(p => p.id === editingPostId) : null;
+    html += `
+      <details class="add-inline" ${editingPostId ? 'open' : ''} style="margin-bottom:24px;">
+        <summary>${editingPostId ? t('learnmore.edit_post') : t('learnmore.add_post')}</summary>
+        <form id="postForm" class="auth-form" data-editing="${editingPostId || ''}">
+          <label>${t('learnmore.post_text')}<textarea name="text" rows="3" maxlength="500">${editingPost ? escapeHTML(editingPost.text || '') : ''}</textarea></label>
+          <label>${t('learnmore.post_image')}
+            ${editingPost && editingPost.image_url ? `
+              <div style="margin:6px 0;">
+                <span class="credits-note">${t('learnmore.current_photo')}</span><br>
+                <img src="${escapeHTML(editingPost.image_url)}" alt="" style="max-width:140px;border-radius:8px;margin-top:4px;">
+              </div>
+            ` : ''}
+            <input type="file" name="image_file" accept="image/*">
+            ${editingPost && editingPost.image_url ? `
+              <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px;">
+                <input type="checkbox" name="remove_image" style="width:auto;"> ${t('learnmore.remove_image')}
+              </label>
+            ` : ''}
+          </label>
+          <label>${t('learnmore.post_video')}<input type="url" name="youtube_link" value="${editingPost ? escapeHTML(editingPost.youtube_link || '') : ''}" placeholder="https://youtube.com/watch?v=..."></label>
+          <button class="btn btn-primary btn-small" type="submit">${editingPostId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="postMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+
+  if (posts.length === 0){
+    html += `<p class="credits-note">${t('learnmore.no_posts')}</p>`;
+  } else {
+    html += `<div class="post-grid">`;
+    posts.forEach(post => {
+      html += `
+        <article class="post-card">
+          ${post.image_url ? `<img src="${escapeHTML(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+          ${post.youtube_link ? youtubeEmbedHTML(post.youtube_link) : ''}
+          <div class="post-card-body">
+            ${post.text ? `<p class="post-text">${escapeHTML(post.text)}</p>` : ''}
+            <span class="post-date">${escapeHTML((post.created_at || '').slice(0,10))}</span>
+            ${isOwner ? `
+              <div class="item-actions">
+                <button class="icon-btn" data-edit-post="${post.id}">${t('common.edit')}</button>
+                <button class="icon-btn" data-delete-post="${post.id}">${t('common.delete')}</button>
+              </div>
+            ` : ''}
+          </div>
+        </article>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  content.innerHTML = html;
+  wireEvents();
+}
+
+function wireEvents(){
+  const postForm = document.getElementById('postForm');
+  if (postForm) postForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('postMsg');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const text = (fd.get('text') || '').trim();
+    const ytLink = (fd.get('youtube_link') || '').trim();
+    const file = fd.get('image_file');
+    const removeImage = fd.get('remove_image') === 'on';
+    const editingId = e.target.dataset.editing;
+    const existingPost = editingId ? (project.project_posts || []).find(p => p.id === editingId) : null;
+
+    if (ytLink && !YOUTUBE_LINK_PATTERN.test(ytLink)){ msg.textContent = t('project.youtube_err'); msg.className = 'form-msg error'; return; }
+
+    // Start from whatever image the post already had, then apply removal or a new upload on top.
+    let imageUrl = existingPost ? existingPost.image_url : null;
+    if (removeImage) imageUrl = null;
+
+    if (file && file.size > 0){
+      if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.file_not_image'); msg.className = 'form-msg error'; return; }
+      if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.file_too_large'); msg.className = 'form-msg error'; return; }
+      submitBtn.disabled = true;
+      msg.textContent = t('learnmore.uploading');
+      msg.className = 'form-msg';
+      try {
+        imageUrl = await uploadPostImage(file);
+      } catch (err) {
+        msg.textContent = err.message || String(err);
+        msg.className = 'form-msg error';
+        submitBtn.disabled = false;
+        return;
+      }
+    }
+
+    if (!text && !imageUrl && !ytLink){
+      msg.textContent = t('learnmore.post_needs_content');
+      msg.className = 'form-msg error';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const payload = { text: text || null, image_url: imageUrl, youtube_link: ytLink || null };
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_posts').update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_posts').insert({ project_id: projectId, ...payload }));
+    }
+    submitBtn.disabled = false;
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingPostId = null;
+    loadProject();
+
+  });
+
+  content.querySelectorAll('[data-edit-post]').forEach(btn => btn.addEventListener('click', () => {
+    editingPostId = btn.dataset.editPost;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-post]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_posts').delete().eq('id', btn.dataset.deletePost);
+    loadProject();
+  }));
+
+  content.querySelectorAll('.qr-form').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = form.querySelector('[data-qr-msg]');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const column = form.dataset.column;
+    const method = form.dataset.method;
+    const file = form.querySelector('input[name="qr_file"]').files[0];
+    if (!file){ return; }
+    if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.qr_not_image'); msg.className = 'form-msg error'; return; }
+    if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.qr_too_large'); msg.className = 'form-msg error'; return; }
+    submitBtn.disabled = true;
+    msg.textContent = t('learnmore.uploading');
+    let url;
+    try {
+      url = await uploadQrImage(file, method);
+    } catch (err) {
+      msg.textContent = err.message || String(err);
+      msg.className = 'form-msg error';
+      submitBtn.disabled = false;
+      return;
+    }
+    const { error } = await supabaseClient.from('projects').update({ [column]: url }).eq('id', projectId);
+    submitBtn.disabled = false;
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    loadProject();
+  }));
+
+  content.querySelectorAll('[data-remove-qr]').forEach(btn => btn.addEventListener('click', async () => {
+    const column = btn.dataset.removeQr;
+    await supabaseClient.from('projects').update({ [column]: null }).eq('id', projectId);
+    loadProject();
+  }));
+
+  const recordForm = document.getElementById('recordForm');
+  if (recordForm) recordForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser){ window.location.href = 'login.html'; return; }
+    const amountVal = e.target.querySelector('input[name="amount"]').value;
+    const amount = amountVal === '' ? null : Number(amountVal);
+    const { data: existing } = await supabaseClient.from('project_supporters').select('id').eq('project_id', projectId).eq('user_id', currentUser.id).maybeSingle();
+    if (existing){
+      await supabaseClient.from('project_supporters').update({ amount }).eq('id', existing.id);
+    } else {
+      await supabaseClient.from('project_supporters').insert({ project_id: projectId, user_id: currentUser.id, amount });
+    }
+    loadProject();
+  });
+}
+
+async function init(){
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  currentUser = session?.user || null;
+  renderNav();
+  await loadProject();
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    renderNav();
+    await loadProject();
+  });
+}
+init();
+</script>
+
+</body>
+</html>

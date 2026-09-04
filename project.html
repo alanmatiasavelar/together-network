@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to view real projects.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding-top:40px;padding-bottom:60px;max-width:780px;">
+    <a class="auth-back" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <div id="pageContent"><p data-i18n="common.loading">Loading…</p></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  if (project) render();
+}
+
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('id');
+const navAuth = document.getElementById('navAuth');
+const content = document.getElementById('pageContent');
+
+let currentUser = null;
+let project = null;
+let activeTab = 'feed';
+let editingGoalId = null;
+let editingReqId = null;
+let editingTaskId = null;
+let editingEventId = null;
+let editingFeedPostId = null;
+let editingCostId = null;
+let aiMessages = [];
+
+function renderNav(){
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost btn-small" href="dashboard.html">${t('nav.dashboard')}</a>
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+  }
+}
+
+const IMAGE_URL_PATTERN = /^https:\/\//;
+const YOUTUBE_LINK_PATTERN = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
+
+async function uploadFeedImage(file){
+  const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
+  const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${projectId}/feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabaseClient.storage.from('project-post-images').upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('project-post-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function loadProject(){
+  if (!projectId){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_specified')}</p>`;
+    return;
+  }
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data, error } = await supabaseClient
+    .from('projects')
+    .select(`*,
+      project_goals(*),
+      project_requirements(*),
+      project_collaborators(id, user_id, status, profiles(display_name)),
+      project_supporters(user_id, amount),
+      project_tasks(*, task_assignees(user_id, profiles(display_name))),
+      project_feed_posts(*),
+      project_polls(*, poll_votes(user_id, option_index)),
+      project_events(*, event_rsvps(user_id, status)),
+      project_costs(*)`)
+    .eq('id', projectId)
+    .single();
+  if (error || !data){
+    content.innerHTML = `<p class="form-msg error">${t('project.load_error')} ${escapeHTML(error?.message || 'not found')}</p>`;
+    return;
+  }
+  project = data;
+  render();
+}
+
+function render(){
+  const isOwner = currentUser && currentUser.id === project.owner_id;
+  const myCollab = (project.project_collaborators || []).find(c => c.user_id === currentUser?.id);
+  const approvedCollabs = (project.project_collaborators || []).filter(c => c.status === 'approved');
+  const pendingRequests = (project.project_collaborators || []).filter(c => c.status === 'pending');
+  const hasAccess = isOwner || (myCollab && myCollab.status === 'approved');
+
+  if (!hasAccess){
+    renderLocked(myCollab);
+    return;
+  }
+
+  let html = '';
+
+  if (isOwner && pendingRequests.length > 0){
+    html += `
+      <div class="notify-banner">
+        <h3>🔔 ${pendingRequests.length} ${pendingRequests.length === 1 ? t('project.notif_one') : t('project.notif_other')}</h3>
+        ${pendingRequests.map(r => `
+          <div class="notify-row">
+            <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}</span>
+            <div class="notify-actions">
+              <button class="btn btn-ghost btn-small" data-approve="${r.id}">${t('project.approve')}</button>
+              <button class="btn btn-ghost btn-small" data-deny="${r.id}">${t('project.deny')}</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  html += `<div class="project-hero">`;
+  if (project.image_url) html += `<img class="feed-card-image" style="aspect-ratio:21/9;" src="${escapeHTML(project.image_url)}" alt="${escapeHTML(project.title)}" onerror="this.remove()">`;
+  if (project.youtube_link) html += youtubeEmbedHTML(project.youtube_link);
+  html += `
+    <div>
+      <p class="eyebrow">${catLabel[project.category] || 'Other'} · ${project.goal_type === 'profit' ? t('feed.type.profit') : t('feed.type.nonprofit')}</p>
+      <h1>${escapeHTML(project.title)}</h1>
+      <p class="project-desc">${escapeHTML(project.description || project.pitch)}</p>
+      <p style="margin-top:10px;font-size:13.5px;color:var(--ink-soft);">${t('project.manager')} ${escapeHTML(project.owner_name)}</p>
+    </div>
+  `;
+  html += `</div>`;
+
+  if (isOwner){
+    html += `
+      <details class="add-inline section-block">
+        <summary>${t('project.edit_media')}</summary>
+        <form id="mediaForm" class="auth-form">
+          <label>${t('project.image_url')}<input type="url" name="image_url" value="${escapeHTML(project.image_url || '')}" placeholder="https://..."></label>
+          <label>${t('project.youtube_link')}<input type="url" name="youtube_link" value="${escapeHTML(project.youtube_link || '')}" placeholder="https://youtube.com/watch?v=..."></label>
+          <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
+          <p class="form-msg" id="mediaMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+
+  html += `<div class="section-block"><h2>${t('project.team_heading')}</h2>`;
+  html += `<div class="collab-list">` + (approvedCollabs.length
+    ? approvedCollabs.map(c => `<span class="chip">${escapeHTML(c.profiles?.display_name || 'Collaborator')}</span>`).join('')
+    : `<span class="credits-note">${t('project.no_collaborators')}</span>`) + `</div>`;
+
+  if (!currentUser){
+    html += `<p style="margin-top:14px;font-size:14px;"><a href="login.html">${t('nav.login')}</a> ${t('project.login_to_join')}</p>`;
+  } else if (isOwner){
+    // owner doesn't request to join their own project
+  } else if (!myCollab){
+    html += `<button class="btn btn-primary btn-small" id="requestJoinBtn" style="margin-top:14px;">${t('project.request_to_join')}</button>`;
+  } else if (myCollab.status === 'pending'){
+    html += `<p style="margin-top:14px;font-size:14px;color:var(--ink-soft);">${t('project.pending_approval')}</p>`;
+  } else if (myCollab.status === 'approved'){
+    html += `<p style="margin-top:14px;font-size:14px;">${t('project.youre_collaborator')} <button class="btn btn-ghost btn-small" id="leaveBtn">${t('project.leave')}</button></p>`;
+  } else if (myCollab.status === 'denied'){
+    html += `<p style="margin-top:14px;font-size:14px;color:var(--ink-soft);">${t('project.declined')} <button class="btn btn-ghost btn-small" id="reRequestBtn">${t('project.request_again')}</button></p>`;
+  }
+  html += `<p class="form-msg" id="teamMsg"></p>`;
+  html += `</div>`;
+
+  // --- Tabs ---
+  html += `
+    <div class="tab-bar">
+      <button data-tab="feed" class="${activeTab === 'feed' ? 'active' : ''}">${t('project.tab_feed')}</button>
+      <button data-tab="goals" class="${activeTab === 'goals' ? 'active' : ''}">${t('project.tab_goals')}</button>
+      <button data-tab="requirements" class="${activeTab === 'requirements' ? 'active' : ''}">${t('project.tab_requirements')}</button>
+      <button data-tab="tasks" class="${activeTab === 'tasks' ? 'active' : ''}">${t('project.tab_tasks')}</button>
+      <button data-tab="polls" class="${activeTab === 'polls' ? 'active' : ''}">${t('project.tab_polls')}</button>
+      <button data-tab="events" class="${activeTab === 'events' ? 'active' : ''}">${t('project.tab_events')}</button>
+      <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
+      <button data-tab="ai" class="${activeTab === 'ai' ? 'active' : ''}">${t('project.tab_ai')}</button>
+    </div>
+    <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
+    <div class="tab-panel" data-panel="goals" ${activeTab !== 'goals' ? 'hidden' : ''}>${renderGoalsPanel(isOwner)}</div>
+    <div class="tab-panel" data-panel="requirements" ${activeTab !== 'requirements' ? 'hidden' : ''}>${renderRequirementsPanel(isOwner)}</div>
+    <div class="tab-panel" data-panel="tasks" ${activeTab !== 'tasks' ? 'hidden' : ''}>${renderTasksPanel(isOwner, approvedCollabs)}</div>
+    <div class="tab-panel" data-panel="polls" ${activeTab !== 'polls' ? 'hidden' : ''}>${renderPollsPanel(isOwner)}</div>
+    <div class="tab-panel" data-panel="events" ${activeTab !== 'events' ? 'hidden' : ''}>${renderEventsPanel(isOwner)}</div>
+    <div class="tab-panel" data-panel="costs" ${activeTab !== 'costs' ? 'hidden' : ''}>${renderCostsPanel()}</div>
+    <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
+  `;
+
+  // --- Coordination ---
+  html += `<div class="section-block"><h2>${t('project.coordination')}</h2>`;
+  html += `<div class="card-row">`;
+  if (project.whatsapp_link){
+    html += `<a class="chip wa-link" href="${escapeHTML(project.whatsapp_link)}" target="_blank" rel="noopener noreferrer">${t('project.join_whatsapp')}</a>`;
+  }
+  if (project.drive_link){
+    html += `<a class="chip wa-link" href="${escapeHTML(project.drive_link)}" target="_blank" rel="noopener noreferrer">${t('project.join_drive')}</a>`;
+  }
+  html += `</div>`;
+  if (!project.whatsapp_link && !project.drive_link && !isOwner){
+    html += `<p class="credits-note">${t('project.no_whatsapp')}</p>`;
+  }
+  if (isOwner){
+    if (!project.whatsapp_link){
+      html += `
+        <details class="wa-add">
+          <summary>${t('project.add_whatsapp')}</summary>
+          <form class="wa-form" data-field="whatsapp_link">
+            <input type="url" name="whatsapp_link" placeholder="https://chat.whatsapp.com/..." required>
+            <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
+            <p class="form-msg" data-wa-msg></p>
+          </form>
+        </details>
+      `;
+    }
+    if (!project.drive_link){
+      html += `
+        <details class="wa-add">
+          <summary>${t('project.add_drive')}</summary>
+          <form class="wa-form" data-field="drive_link">
+            <input type="url" name="drive_link" placeholder="https://drive.google.com/drive/folders/..." required>
+            <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
+            <p class="form-msg" data-wa-msg></p>
+          </form>
+        </details>
+      `;
+    }
+  }
+  html += `</div>`;
+
+  content.innerHTML = html;
+  wireEvents();
+}
+
+function renderLocked(myCollab){
+  let html = `
+    <div class="locked-card">
+      <h2>${t('project.locked_title')}</h2>
+      <p>${t('project.locked_desc')}</p>
+  `;
+  if (!currentUser){
+    html += `
+      <div class="hero-ctas" style="justify-content:center;">
+        <a class="btn btn-primary" href="login.html">${t('nav.login')}</a>
+        <a class="btn btn-ghost" href="signup.html">${t('nav.signup')}</a>
+      </div>
+    `;
+  } else if (!myCollab){
+    html += `<button class="btn btn-primary btn-small" id="requestJoinBtn">${t('project.request_to_join')}</button>`;
+  } else if (myCollab.status === 'pending'){
+    html += `<p style="color:var(--ink-soft);font-size:14px;">${t('project.pending_approval')}</p>`;
+  } else if (myCollab.status === 'denied'){
+    html += `
+      <p style="color:var(--ink-soft);font-size:14px;">${t('project.declined')}</p>
+      <button class="btn btn-ghost btn-small" id="reRequestBtn">${t('project.request_again')}</button>
+    `;
+  }
+  html += `<p class="form-msg" id="teamMsg"></p></div>`;
+  html += `<div style="text-align:center;margin-top:10px;"><a class="view-project-link" href="learn-more.html?id=${projectId}">${t('feed.learn_more')}</a></div>`;
+  content.innerHTML = html;
+  wireEvents();
+}
+
+function renderFeedPanel(){
+  const isOwner = currentUser && currentUser.id === project.owner_id;
+  const posts = (project.project_feed_posts || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const editingPost = editingFeedPostId ? posts.find(p => p.id === editingFeedPostId) : null;
+
+  let html = `
+    <details class="add-inline" ${editingFeedPostId ? 'open' : ''}>
+      <summary>${editingFeedPostId ? t('common.edit') : t('project.feed_add_post')}</summary>
+      <form id="feedPostForm" class="auth-form" data-editing="${editingFeedPostId || ''}">
+        <label>${t('learnmore.post_text')}<textarea name="text" rows="3" maxlength="500">${editingPost ? escapeHTML(editingPost.text || '') : ''}</textarea></label>
+        <label>${t('learnmore.post_image')}
+          ${editingPost && editingPost.image_url ? `
+            <div style="margin:6px 0;">
+              <span class="credits-note">${t('learnmore.current_photo')}</span><br>
+              <img src="${escapeHTML(editingPost.image_url)}" alt="" style="max-width:140px;border-radius:8px;margin-top:4px;">
+            </div>
+          ` : ''}
+          <input type="file" name="image_file" accept="image/*">
+          ${editingPost && editingPost.image_url ? `
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px;">
+              <input type="checkbox" name="remove_image" style="width:auto;"> ${t('learnmore.remove_image')}
+            </label>
+          ` : ''}
+        </label>
+        <label>${t('learnmore.post_video')}<input type="url" name="youtube_link" value="${editingPost ? escapeHTML(editingPost.youtube_link || '') : ''}" placeholder="https://youtube.com/watch?v=..."></label>
+        <button class="btn btn-primary btn-small" type="submit">${editingFeedPostId ? t('common.save') : t('common.add')}</button>
+        <p class="form-msg" id="feedPostMsg"></p>
+      </form>
+    </details>
+  `;
+
+  if (posts.length === 0){
+    html += `<p class="credits-note">${t('project.feed_no_posts')}</p>`;
+  } else {
+    posts.forEach(post => {
+      const canEdit = currentUser && currentUser.id === post.user_id;
+      const canDelete = canEdit || isOwner;
+      html += `
+        <article class="team-post">
+          <div class="team-post-meta">${t('project.feed_posted_by')} ${escapeHTML(post.user_name)} · ${escapeHTML((post.created_at || '').slice(0, 10))}</div>
+          ${post.image_url ? `<img src="${escapeHTML(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+          ${post.youtube_link ? youtubeEmbedHTML(post.youtube_link) : ''}
+          ${post.text ? `<p class="post-text">${escapeHTML(post.text)}</p>` : ''}
+          ${(canEdit || canDelete) ? `
+            <div class="item-actions">
+              ${canEdit ? `<button class="icon-btn" data-edit-feedpost="${post.id}">${t('common.edit')}</button>` : ''}
+              ${canDelete ? `<button class="icon-btn" data-delete-feedpost="${post.id}">${t('common.delete')}</button>` : ''}
+            </div>
+          ` : ''}
+        </article>
+      `;
+    });
+  }
+  return html;
+}
+
+function renderPollsPanel(isOwner){
+  const polls = (project.project_polls || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  let html = '';
+  if (polls.length === 0) html += `<p class="credits-note">${t('project.no_polls')}</p>`;
+  polls.forEach(poll => {
+    const votes = poll.poll_votes || [];
+    const myVote = votes.find(v => v.user_id === currentUser?.id);
+    const totalVotes = votes.length;
+    const canDelete = isOwner || (currentUser && currentUser.id === poll.created_by);
+    html += `<div class="poll-card"><h4>${escapeHTML(poll.question)}</h4>`;
+    html += `<p class="poll-meta" style="margin-top:-8px;margin-bottom:12px;">${t('project.created_by')} ${escapeHTML(poll.created_by_name || '')}</p>`;
+    (poll.options || []).forEach((opt, idx) => {
+      const count = votes.filter(v => v.option_index === idx).length;
+      const pct = totalVotes ? Math.round((count / totalVotes) * 100) : 0;
+      const isSelected = myVote && myVote.option_index === idx;
+      html += `
+        <div class="poll-option">
+          <label class="poll-option-row ${isSelected ? 'selected' : ''}">
+            <input type="radio" name="poll-${poll.id}" value="${idx}" data-poll-id="${poll.id}" ${isSelected ? 'checked' : ''}>
+            <span>${escapeHTML(opt)}</span>
+          </label>
+          <div class="poll-bar-track"><div class="poll-bar-fill" style="width:${pct}%"></div></div>
+          <div class="poll-option-label"><span>${count} ${count === 1 ? t('project.vote_singular') : t('project.vote_plural')}</span><span>${pct}%</span></div>
+        </div>
+      `;
+    });
+    if (myVote) html += `<p class="poll-meta">${t('project.your_vote')} ${escapeHTML(poll.options[myVote.option_index] || '')}</p>`;
+    if (canDelete) html += `<button class="icon-btn" data-delete-poll="${poll.id}">${t('common.delete')}</button>`;
+    html += `</div>`;
+  });
+
+  if (currentUser){
+    html += `
+      <details class="add-inline">
+        <summary>${t('project.add_poll')}</summary>
+        <form id="pollForm" class="auth-form">
+          <label>${t('project.poll_question')}<input type="text" required name="question" maxlength="200"></label>
+          <label>${t('project.poll_options_label')} <span class="credits-note">(${t('project.poll_options_hint')})</span><textarea name="options" rows="4" required placeholder="Option 1&#10;Option 2"></textarea></label>
+          <button class="btn btn-ghost btn-small" type="submit">${t('common.add')}</button>
+          <p class="form-msg" id="pollMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function renderEventsPanel(isOwner){
+  const events = (project.project_events || []).slice().sort((a,b) => new Date(a.event_at) - new Date(b.event_at));
+  let html = '';
+  if (events.length === 0) html += `<p class="credits-note">${t('project.no_events')}</p>`;
+  events.forEach(ev => {
+    const rsvps = ev.event_rsvps || [];
+    const myRsvp = rsvps.find(r => r.user_id === currentUser?.id);
+    const goingCount = rsvps.filter(r => r.status === 'going').length;
+    const notGoingCount = rsvps.filter(r => r.status === 'not_going').length;
+    const dt = new Date(ev.event_at);
+    const dtLabel = isNaN(dt) ? escapeHTML(ev.event_at) : dt.toLocaleString(currentLang, { dateStyle: 'medium', timeStyle: 'short' });
+    const isCreator = currentUser && currentUser.id === ev.created_by;
+    const canDelete = isOwner || isCreator;
+    html += `
+      <div class="event-card">
+        <h4>${escapeHTML(ev.title)}</h4>
+        <div class="event-when">🗓 ${dtLabel}</div>
+        <p class="poll-meta" style="margin-bottom:8px;">${t('project.created_by')} ${escapeHTML(ev.created_by_name || '')}</p>
+        ${ev.description ? `<p class="event-desc">${escapeHTML(ev.description)}</p>` : ''}
+        <div class="rsvp-row">
+          <button class="rsvp-btn going ${myRsvp?.status === 'going' ? 'active' : ''}" data-rsvp-event="${ev.id}" data-rsvp-status="going">${t('project.rsvp_going')}</button>
+          <button class="rsvp-btn not_going ${myRsvp?.status === 'not_going' ? 'active' : ''}" data-rsvp-event="${ev.id}" data-rsvp-status="not_going">${t('project.rsvp_not_going')}</button>
+          <span class="event-counts">${goingCount} ${t('project.going_count_label')} · ${notGoingCount} ${t('project.not_going_count_label')}</span>
+        </div>
+        ${(isCreator || canDelete) ? `
+          <div class="item-actions" style="margin-top:10px;">
+            ${isCreator ? `<button class="icon-btn" data-edit-event="${ev.id}">${t('common.edit')}</button>` : ''}
+            ${canDelete ? `<button class="icon-btn" data-delete-event="${ev.id}">${t('common.delete')}</button>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+
+  if (currentUser){
+    const editingEvent = editingEventId ? events.find(e => e.id === editingEventId) : null;
+    let dtValue = '';
+    if (editingEvent && editingEvent.event_at){
+      const d = new Date(editingEvent.event_at);
+      if (!isNaN(d)) dtValue = d.toISOString().slice(0, 16);
+    }
+    html += `
+      <details class="add-inline" ${editingEventId ? 'open' : ''}>
+        <summary>${editingEventId ? t('common.edit') : t('project.add_event')}</summary>
+        <form id="eventForm" class="auth-form" data-editing="${editingEventId || ''}">
+          <label>${t('project.event_title_label')}<input type="text" required name="title" maxlength="120" value="${editingEvent ? escapeHTML(editingEvent.title) : ''}"></label>
+          <label>${t('project.event_datetime_label')}<input type="datetime-local" required name="event_at" value="${dtValue}"></label>
+          <label>${t('project.event_desc_label')}<textarea name="description" rows="2" maxlength="300">${editingEvent ? escapeHTML(editingEvent.description || '') : ''}</textarea></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingEventId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="eventMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function renderCostsPanel(){
+  const costs = (project.project_costs || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const total = costs.reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  let html = `
+    <div class="costs-total-bar">
+      <span>${t('project.costs_total')}</span>
+      <span class="amount">$${total.toFixed(2)}</span>
+    </div>
+  `;
+  if (costs.length === 0) html += `<p class="credits-note">${t('project.no_costs')}</p>`;
+  costs.forEach(c => {
+    html += `
+      <div class="cost-row">
+        <div>
+          <div class="cost-desc">${escapeHTML(c.description)}</div>
+          <div class="cost-meta">${t('project.created_by')} ${escapeHTML(c.added_by_name)}${c.cost_date ? ' · ' + escapeHTML(c.cost_date) : ''}${c.category ? ' · ' + escapeHTML(c.category) : ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="cost-amount">$${Number(c.amount).toFixed(2)}</span>
+          <div class="item-actions">
+            <button class="icon-btn" data-edit-cost="${c.id}">${t('common.edit')}</button>
+            <button class="icon-btn" data-delete-cost="${c.id}">${t('common.delete')}</button>
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  if (currentUser){
+    const editingCost = editingCostId ? costs.find(c => c.id === editingCostId) : null;
+    html += `
+      <details class="add-inline" ${editingCostId ? 'open' : ''} style="margin-top:16px;">
+        <summary>${editingCostId ? t('common.edit') : t('project.add_cost')}</summary>
+        <form id="costForm" class="auth-form" data-editing="${editingCostId || ''}">
+          <label>${t('project.cost_description')}<input type="text" required name="description" maxlength="140" value="${editingCost ? escapeHTML(editingCost.description) : ''}"></label>
+          <label>${t('project.cost_amount')}<input type="number" required name="amount" min="0" step="0.01" value="${editingCost ? editingCost.amount : ''}"></label>
+          <label>${t('project.cost_date_label')}<input type="date" name="cost_date" value="${editingCost && editingCost.cost_date ? editingCost.cost_date : ''}"></label>
+          <label>${t('project.cost_category')}<input type="text" name="category" maxlength="60" value="${editingCost ? escapeHTML(editingCost.category || '') : ''}"></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingCostId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="costMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function renderAiMessages(){
+  const box = document.getElementById('aiChatBox');
+  if (!box) return;
+  box.innerHTML = aiMessages.length === 0
+    ? `<p class="credits-note">${t('ai.empty_state')}</p>`
+    : aiMessages.map(m => `
+        <div class="ai-msg ${m.role}"><div class="ai-msg-bubble">${escapeHTML(m.content)}</div></div>
+      `).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderAiPanel(){
+  return `
+    <p class="credits-note" style="margin-bottom:16px;">${t('ai.setup_note')}</p>
+    <div class="ai-chat" id="aiChatBox"></div>
+    <form id="aiChatForm" class="auth-form" style="margin-top:14px;">
+      <textarea name="message" rows="2" placeholder="${t('ai.ask_placeholder')}" required></textarea>
+      <button class="btn btn-primary btn-small" type="submit">${t('ai.send')}</button>
+      <p class="form-msg" id="aiChatMsg"></p>
+    </form>
+
+    <div class="section-block" style="margin-top:28px;">
+      <h3 style="font-size:16px;margin-bottom:8px;">${t('ai.scan_receipt_heading')}</h3>
+      <p class="credits-note" style="margin-bottom:10px;">${t('ai.scan_receipt_desc')}</p>
+      <form id="scanReceiptForm" class="auth-form">
+        <input type="file" name="receipt_file" accept="image/*" required>
+        <button class="btn btn-ghost btn-small" type="submit">${t('ai.scan_button')}</button>
+        <p class="form-msg" id="scanMsg"></p>
+      </form>
+      <div id="scanResults"></div>
+    </div>
+  `;
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderScanResults(items){
+  const container = document.getElementById('scanResults');
+  if (!container) return;
+  if (!items.length){
+    container.innerHTML = `<p class="credits-note">${t('ai.no_items_found')}</p>`;
+    return;
+  }
+  container.innerHTML = `
+    <p class="credits-note" style="margin:10px 0;">${t('ai.review_items')}</p>
+    ${items.map((it, idx) => `
+      <label>
+        <input type="checkbox" data-scan-item="${idx}" checked>
+        <span>${escapeHTML(it.description || '')} — $${Number(it.amount || 0).toFixed(2)}${it.category ? ' (' + escapeHTML(it.category) + ')' : ''}</span>
+      </label>
+    `).join('')}
+    <button class="btn btn-primary btn-small" id="confirmScanBtn" type="button">${t('ai.add_selected')}</button>
+    <p class="form-msg" id="confirmScanMsg"></p>
+  `;
+
+  document.getElementById('confirmScanBtn').addEventListener('click', async () => {
+    const msgEl = document.getElementById('confirmScanMsg');
+    const checkedIdx = [...container.querySelectorAll('[data-scan-item]:checked')].map(cb => Number(cb.dataset.scanItem));
+    if (!checkedIdx.length) return;
+    const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    const rows = checkedIdx.map(idx => ({
+      project_id: projectId,
+      description: items[idx].description || 'Receipt item',
+      amount: Number(items[idx].amount) || 0,
+      cost_date: items[idx].date || null,
+      category: items[idx].category || null,
+      added_by: currentUser.id,
+      added_by_name: userName
+    }));
+    const { error } = await supabaseClient.from('project_costs').insert(rows);
+    if (error){ msgEl.textContent = error.message; msgEl.className = 'form-msg error'; return; }
+    msgEl.textContent = t('ai.items_added');
+    msgEl.className = 'form-msg ok';
+    container.innerHTML = '';
+  });
+}
+
+function renderGoalsPanel(isOwner){
+  const goals = project.project_goals || [];
+  let html = '';
+  if (goals.length === 0) html += `<p class="credits-note">${t('project.no_goals')}</p>`;
+  goals.forEach(g => {
+    html += `
+      <div class="goal-item">
+        <div class="goal-item-top"><h4>${escapeHTML(g.title)}</h4><span>${g.progress}%</span></div>
+        ${g.description ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">${escapeHTML(g.description)}</p>` : ''}
+        <div class="goal-bar"><div class="goal-bar-fill" style="width:${g.progress}%"></div></div>
+        ${isOwner ? `
+          <form class="goal-edit-row" data-goal-id="${g.id}">
+            <input type="number" name="progress" min="0" max="100" value="${g.progress}">
+            <button class="btn btn-ghost btn-small" type="submit">${t('common.update')}</button>
+          </form>
+          <div class="item-actions" style="margin-top:8px;">
+            <button class="icon-btn" data-edit-goal="${g.id}">${t('common.edit')}</button>
+            <button class="icon-btn" data-delete-goal="${g.id}">${t('common.delete')}</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  });
+  if (isOwner){
+    const editingGoal = editingGoalId ? goals.find(g => g.id === editingGoalId) : null;
+    html += `
+      <details class="add-inline" ${editingGoalId ? 'open' : ''}>
+        <summary>${editingGoalId ? t('common.edit') : t('project.add_goal')}</summary>
+        <form id="goalForm" class="auth-form" data-editing="${editingGoalId || ''}">
+          <label>${t('project.goal_title')}<input type="text" required name="title" maxlength="80" value="${editingGoal ? escapeHTML(editingGoal.title) : ''}"></label>
+          <label>${t('project.goal_desc')}<textarea name="description" rows="2" maxlength="300">${editingGoal ? escapeHTML(editingGoal.description || '') : ''}</textarea></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingGoalId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="goalMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function renderRequirementsPanel(isOwner){
+  const reqs = project.project_requirements || [];
+  const statuses = ['created','implemented','verified','validated'];
+  let html = '';
+  if (reqs.length === 0) html += `<p class="credits-note">${t('project.no_requirements')}</p>`;
+  reqs.forEach(r => {
+    html += `
+      <div class="req-item">
+        <div>
+          <h4>${escapeHTML(r.title)}</h4>
+          ${r.description ? `<p>${escapeHTML(r.description)}</p>` : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${isOwner ? `
+            <select data-req-id="${r.id}">
+              ${statuses.map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${t('project.status.' + s)}</option>`).join('')}
+            </select>
+            <div class="item-actions">
+              <button class="icon-btn" data-edit-req="${r.id}">${t('common.edit')}</button>
+              <button class="icon-btn" data-delete-req="${r.id}">${t('common.delete')}</button>
+            </div>
+          ` : `<span class="status-badge ${r.status}">${t('project.status.' + r.status)}</span>`}
+        </div>
+      </div>
+    `;
+  });
+  if (isOwner){
+    const editingReq = editingReqId ? reqs.find(r => r.id === editingReqId) : null;
+    html += `
+      <details class="add-inline" ${editingReqId ? 'open' : ''}>
+        <summary>${editingReqId ? t('common.edit') : t('project.add_requirement')}</summary>
+        <form id="reqForm" class="auth-form" data-editing="${editingReqId || ''}">
+          <label>${t('project.goal_title')}<input type="text" required name="title" maxlength="80" value="${editingReq ? escapeHTML(editingReq.title) : ''}"></label>
+          <label>${t('project.goal_desc')}<textarea name="description" rows="2" maxlength="300">${editingReq ? escapeHTML(editingReq.description || '') : ''}</textarea></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingReqId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="reqMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function renderTasksPanel(isOwner, approvedCollabs){
+  const tasks = project.project_tasks || [];
+  const columns = ['created','working','finished','approved'];
+  let html = `<p class="poll-meta" style="margin-top:0;">${t('project.tab_kanban_note')}</p>`;
+  html += `<div class="kanban">`;
+  columns.forEach(col => {
+    const colTasks = tasks.filter(tk => tk.status === col);
+    html += `<div class="kanban-col"><h4>${t('project.col_' + col)}</h4>`;
+    if (colTasks.length === 0) html += `<p class="kanban-empty">${t('project.no_tasks_in_column')}</p>`;
+    colTasks.forEach(tk => {
+      const assignees = (tk.task_assignees || []).map(a => a.profiles?.display_name || '?');
+      html += `
+        <div class="task-card">
+          <h5>${escapeHTML(tk.title)}</h5>
+          ${tk.description ? `<p>${escapeHTML(tk.description)}</p>` : ''}
+          <div class="task-meta">
+            ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
+            ${tk.due_date ? `<span class="chip">${t('project.due')} ${escapeHTML(tk.due_date)}</span>` : ''}
+          </div>
+          <select data-task-status data-task-id="${tk.id}">
+            ${columns.map(c => `<option value="${c}" ${c === tk.status ? 'selected' : ''}>${t('project.col_' + c)}</option>`).join('')}
+          </select>
+          <div class="item-actions" style="margin-top:6px;">
+            <a class="icon-btn" href="task.html?id=${tk.id}">👁 ${t('project.view_workflow')}</a>
+            <button class="icon-btn" data-edit-task="${tk.id}">${t('common.edit')}</button>
+            <button class="icon-btn" data-delete-task="${tk.id}">${t('common.delete')}</button>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+
+  if (currentUser){
+    const editingTask = editingTaskId ? tasks.find(tk => tk.id === editingTaskId) : null;
+    const assigneesHTML = approvedCollabs.length
+      ? approvedCollabs.map(c => {
+          const checked = editingTask && (editingTask.task_assignees || []).some(a => a.user_id === c.user_id);
+          return `<label><input type="checkbox" name="assignee" value="${c.user_id}" ${checked ? 'checked' : ''}> ${escapeHTML(c.profiles?.display_name || '?')}</label>`;
+        }).join('')
+      : `<span class="credits-note">${t('project.no_collaborators')}</span>`;
+    html += `
+      <details class="add-inline" ${editingTaskId ? 'open' : ''} style="margin-top:16px;">
+        <summary>${editingTaskId ? t('common.edit') : t('project.add_task')}</summary>
+        <form id="taskForm" class="auth-form" data-editing="${editingTaskId || ''}">
+          <label>${t('project.task_title')}<input type="text" required name="title" maxlength="80" value="${editingTask ? escapeHTML(editingTask.title) : ''}"></label>
+          <label>${t('project.task_desc')}<textarea name="description" rows="2" maxlength="300">${editingTask ? escapeHTML(editingTask.description || '') : ''}</textarea></label>
+          <label>${t('project.task_due')}<input type="date" name="due_date" value="${editingTask && editingTask.due_date ? editingTask.due_date : ''}"></label>
+          <label>${t('project.task_assignees')}<div class="assignee-checks">${assigneesHTML}</div></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingTaskId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="taskMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function setTeamMsg(text, isError){
+  const el = document.getElementById('teamMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'form-msg' + (isError ? ' error' : '');
+}
+
+function wireEvents(){
+  content.querySelectorAll('.tab-bar button').forEach(btn => btn.addEventListener('click', () => {
+    activeTab = btn.dataset.tab;
+    content.querySelectorAll('.tab-bar button').forEach(b => b.classList.toggle('active', b === btn));
+    content.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== activeTab; });
+  }));
+
+  const requestBtn = document.getElementById('requestJoinBtn');
+  if (requestBtn) requestBtn.addEventListener('click', async () => {
+    requestBtn.disabled = true;
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    if (error){ setTeamMsg(error.message, true); requestBtn.disabled = false; return; }
+    loadProject();
+  });
+
+  const leaveBtn = document.getElementById('leaveBtn');
+  if (leaveBtn) leaveBtn.addEventListener('click', async () => {
+    await supabaseClient.from('project_collaborators').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
+    loadProject();
+  });
+
+  const reRequestBtn = document.getElementById('reRequestBtn');
+  if (reRequestBtn) reRequestBtn.addEventListener('click', async () => {
+    await supabaseClient.from('project_collaborators').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    if (error){ setTeamMsg(error.message, true); return; }
+    loadProject();
+  });
+
+  content.querySelectorAll('[data-approve]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_collaborators').update({ status: 'approved' }).eq('id', btn.dataset.approve);
+    loadProject();
+  }));
+  content.querySelectorAll('[data-deny]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_collaborators').update({ status: 'denied' }).eq('id', btn.dataset.deny);
+    loadProject();
+  }));
+
+  const mediaForm = document.getElementById('mediaForm');
+  if (mediaForm) mediaForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('mediaMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const imageUrl = (fd.get('image_url') || '').trim();
+    const ytLink = (fd.get('youtube_link') || '').trim();
+    if (imageUrl && !IMAGE_URL_PATTERN.test(imageUrl)){ msg.textContent = t('project.image_url_err'); msg.className = 'form-msg error'; return; }
+    if (ytLink && !YOUTUBE_LINK_PATTERN.test(ytLink)){ msg.textContent = t('project.youtube_err'); msg.className = 'form-msg error'; return; }
+    const { error } = await supabaseClient.from('projects').update({ image_url: imageUrl || null, youtube_link: ytLink || null }).eq('id', projectId);
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    loadProject();
+  });
+
+  // --- Goals ---
+  content.querySelectorAll('.goal-edit-row').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const goalId = form.dataset.goalId;
+    const progress = Math.max(0, Math.min(100, Number(form.querySelector('input[name="progress"]').value) || 0));
+    await supabaseClient.from('project_goals').update({ progress }).eq('id', goalId);
+    loadProject();
+  }));
+  const goalForm = document.getElementById('goalForm');
+  if (goalForm) goalForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('goalMsg');
+    const fd = new FormData(e.target);
+    const editingId = e.target.dataset.editing;
+    const payload = { title: fd.get('title'), description: fd.get('description') || null };
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_goals').update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_goals').insert({ project_id: projectId, ...payload }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingGoalId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-goal]').forEach(btn => btn.addEventListener('click', () => { editingGoalId = btn.dataset.editGoal; render(); }));
+  content.querySelectorAll('[data-delete-goal]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_goals').delete().eq('id', btn.dataset.deleteGoal);
+    loadProject();
+  }));
+
+  // --- Requirements ---
+  content.querySelectorAll('[data-req-id]').forEach(sel => sel.addEventListener('change', async () => {
+    await supabaseClient.from('project_requirements').update({ status: sel.value }).eq('id', sel.dataset.reqId);
+    loadProject();
+  }));
+  const reqForm = document.getElementById('reqForm');
+  if (reqForm) reqForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('reqMsg');
+    const fd = new FormData(e.target);
+    const editingId = e.target.dataset.editing;
+    const payload = { title: fd.get('title'), description: fd.get('description') || null };
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_requirements').update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_requirements').insert({ project_id: projectId, ...payload }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingReqId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-req]').forEach(btn => btn.addEventListener('click', () => { editingReqId = btn.dataset.editReq; render(); }));
+  content.querySelectorAll('[data-delete-req]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_requirements').delete().eq('id', btn.dataset.deleteReq);
+    loadProject();
+  }));
+
+  // --- Tasks ---
+  content.querySelectorAll('[data-task-status]').forEach(sel => sel.addEventListener('change', async () => {
+    await supabaseClient.from('project_tasks').update({ status: sel.value }).eq('id', sel.dataset.taskId);
+    loadProject();
+  }));
+  const taskForm = document.getElementById('taskForm');
+  if (taskForm) taskForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('taskMsg');
+    const fd = new FormData(e.target);
+    const editingId = e.target.dataset.editing;
+    const checkedAssignees = [...e.target.querySelectorAll('input[name="assignee"]:checked')].map(cb => cb.value);
+    const payload = { title: fd.get('title'), description: fd.get('description') || null, due_date: fd.get('due_date') || null };
+    let taskId = editingId || null;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_tasks').update(payload).eq('id', editingId));
+      if (!error) await supabaseClient.from('task_assignees').delete().eq('task_id', editingId);
+    } else {
+      const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      const { data, error: insErr } = await supabaseClient.from('project_tasks').insert({ project_id: projectId, ...payload, created_by: currentUser.id, created_by_name: userName }).select().single();
+      error = insErr;
+      if (data) taskId = data.id;
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    if (taskId && checkedAssignees.length){
+      await supabaseClient.from('task_assignees').insert(checkedAssignees.map(uid => ({ task_id: taskId, user_id: uid })));
+    }
+    editingTaskId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-task]').forEach(btn => btn.addEventListener('click', () => { editingTaskId = btn.dataset.editTask; render(); }));
+  content.querySelectorAll('[data-delete-task]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_tasks').delete().eq('id', btn.dataset.deleteTask);
+    loadProject();
+  }));
+
+  // --- WhatsApp / PayPal links ---
+  content.querySelectorAll('.wa-form').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const field = form.dataset.field;
+    const pattern = field === 'drive_link' ? DRIVE_LINK_PATTERN : WHATSAPP_LINK_PATTERN;
+    const errKey = field === 'drive_link' ? 'feed.drive_err' : 'feed.whatsapp_err';
+    const msgEl = form.querySelector('[data-wa-msg]');
+    const link = form.querySelector(`input[name="${field}"]`).value.trim();
+    msgEl.textContent = ''; msgEl.className = 'form-msg';
+    if (!pattern.test(link)){ msgEl.textContent = t(errKey); msgEl.className = 'form-msg error'; return; }
+    const { error } = await supabaseClient.from('projects').update({ [field]: link }).eq('id', projectId);
+    if (error){ msgEl.textContent = error.message; msgEl.className = 'form-msg error'; return; }
+    loadProject();
+  }));
+
+  // --- Team feed ---
+  const feedPostForm = document.getElementById('feedPostForm');
+  if (feedPostForm) feedPostForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('feedPostMsg');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const text = (fd.get('text') || '').trim();
+    const ytLink = (fd.get('youtube_link') || '').trim();
+    const file = e.target.querySelector('input[name="image_file"]').files[0];
+    const removeImage = fd.get('remove_image') === 'on';
+    const editingId = e.target.dataset.editing;
+    const existingPost = editingId ? (project.project_feed_posts || []).find(p => p.id === editingId) : null;
+
+    if (ytLink && !YOUTUBE_LINK_PATTERN.test(ytLink)){ msg.textContent = t('project.youtube_err'); msg.className = 'form-msg error'; return; }
+
+    let imageUrl = existingPost ? existingPost.image_url : null;
+    if (removeImage) imageUrl = null;
+
+    if (file && file.size > 0){
+      if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.file_not_image'); msg.className = 'form-msg error'; return; }
+      if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.file_too_large'); msg.className = 'form-msg error'; return; }
+      submitBtn.disabled = true;
+      msg.textContent = t('learnmore.uploading');
+      try {
+        imageUrl = await uploadFeedImage(file);
+      } catch (err) {
+        msg.textContent = err.message || String(err);
+        msg.className = 'form-msg error';
+        submitBtn.disabled = false;
+        return;
+      }
+    }
+
+    if (!text && !imageUrl && !ytLink){
+      msg.textContent = t('learnmore.post_needs_content');
+      msg.className = 'form-msg error';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_feed_posts').update({ text: text || null, image_url: imageUrl, youtube_link: ytLink || null }).eq('id', editingId));
+    } else {
+      const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      ({ error } = await supabaseClient.from('project_feed_posts').insert({
+        project_id: projectId, user_id: currentUser.id, user_name: userName,
+        text: text || null, image_url: imageUrl, youtube_link: ytLink || null
+      }));
+    }
+    submitBtn.disabled = false;
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingFeedPostId = null;
+    loadProject();
+  });
+
+  content.querySelectorAll('[data-edit-feedpost]').forEach(btn => btn.addEventListener('click', () => {
+    editingFeedPostId = btn.dataset.editFeedpost;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-feedpost]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_feed_posts').delete().eq('id', btn.dataset.deleteFeedpost);
+    loadProject();
+  }));
+
+  // --- Polls ---
+  const pollForm = document.getElementById('pollForm');
+  if (pollForm) pollForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('pollMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const question = (fd.get('question') || '').trim();
+    const options = (fd.get('options') || '').split('\n').map(s => s.trim()).filter(Boolean);
+    if (options.length < 2){
+      msg.textContent = t('project.poll_min_options_err');
+      msg.className = 'form-msg error';
+      return;
+    }
+    const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    const { error } = await supabaseClient.from('project_polls').insert({ project_id: projectId, question, options, created_by: currentUser.id, created_by_name: userName });
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    loadProject();
+  });
+
+  content.querySelectorAll('.poll-option-row input[type="radio"]').forEach(radio => radio.addEventListener('change', async (e) => {
+    if (!currentUser) return;
+    const pollId = e.target.dataset.pollId;
+    const optionIndex = Number(e.target.value);
+    const { data: existing } = await supabaseClient.from('poll_votes').select('id').eq('poll_id', pollId).eq('user_id', currentUser.id).maybeSingle();
+    if (existing){
+      await supabaseClient.from('poll_votes').update({ option_index: optionIndex }).eq('id', existing.id);
+    } else {
+      await supabaseClient.from('poll_votes').insert({ poll_id: pollId, user_id: currentUser.id, option_index: optionIndex });
+    }
+    loadProject();
+  }));
+
+  content.querySelectorAll('[data-delete-poll]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_polls').delete().eq('id', btn.dataset.deletePoll);
+    loadProject();
+  }));
+
+  // --- Events ---
+  const eventForm = document.getElementById('eventForm');
+  if (eventForm) eventForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('eventMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const title = (fd.get('title') || '').trim();
+    const eventAtLocal = fd.get('event_at');
+    const description = (fd.get('description') || '').trim();
+    const editingId = e.target.dataset.editing;
+    const payload = { title, description: description || null, event_at: eventAtLocal ? new Date(eventAtLocal).toISOString() : null };
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_events').update(payload).eq('id', editingId));
+    } else {
+      const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      ({ error } = await supabaseClient.from('project_events').insert({ project_id: projectId, ...payload, created_by: currentUser.id, created_by_name: userName }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingEventId = null;
+    loadProject();
+  });
+
+  content.querySelectorAll('[data-edit-event]').forEach(btn => btn.addEventListener('click', () => {
+    editingEventId = btn.dataset.editEvent;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-event]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_events').delete().eq('id', btn.dataset.deleteEvent);
+    loadProject();
+  }));
+  content.querySelectorAll('[data-rsvp-event]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!currentUser){ window.location.href = 'login.html'; return; }
+    const eventId = btn.dataset.rsvpEvent;
+    const status = btn.dataset.rsvpStatus;
+    const { data: existing } = await supabaseClient.from('event_rsvps').select('id').eq('event_id', eventId).eq('user_id', currentUser.id).maybeSingle();
+    if (existing){
+      await supabaseClient.from('event_rsvps').update({ status }).eq('id', existing.id);
+    } else {
+      await supabaseClient.from('event_rsvps').insert({ event_id: eventId, user_id: currentUser.id, status });
+    }
+    loadProject();
+  }));
+
+  // --- Costs ---
+  const costForm = document.getElementById('costForm');
+  if (costForm) costForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('costMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const description = (fd.get('description') || '').trim();
+    const amount = Number(fd.get('amount'));
+    const costDate = fd.get('cost_date') || null;
+    const category = (fd.get('category') || '').trim() || null;
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_costs').update({ description, amount, cost_date: costDate, category }).eq('id', editingId));
+    } else {
+      const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      ({ error } = await supabaseClient.from('project_costs').insert({
+        project_id: projectId, description, amount, cost_date: costDate, category,
+        added_by: currentUser.id, added_by_name: userName
+      }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingCostId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-cost]').forEach(btn => btn.addEventListener('click', () => {
+    editingCostId = btn.dataset.editCost;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-cost]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_costs').delete().eq('id', btn.dataset.deleteCost);
+    loadProject();
+  }));
+
+  // --- AI assistant ---
+  if (document.getElementById('aiChatBox')) renderAiMessages();
+
+  const aiChatForm = document.getElementById('aiChatForm');
+  if (aiChatForm) aiChatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('aiChatMsg');
+    const fd = new FormData(e.target);
+    const text = (fd.get('message') || '').trim();
+    if (!text) return;
+    aiMessages.push({ role: 'user', content: text });
+    renderAiMessages();
+    e.target.reset();
+    msg.textContent = t('ai.thinking');
+    msg.className = 'form-msg';
+    const { data, error } = await supabaseClient.functions.invoke('ai-assistant', {
+      body: { action: 'chat', projectId, messages: aiMessages.map(m => ({ role: m.role, content: m.content })) }
+    });
+    if (error || data?.error){
+      msg.textContent = (data && data.error) || (error && error.message) || t('ai.error_generic');
+      msg.className = 'form-msg error';
+      return;
+    }
+    aiMessages.push({ role: 'assistant', content: data.reply || '' });
+    msg.textContent = '';
+    renderAiMessages();
+  });
+
+  const scanReceiptForm = document.getElementById('scanReceiptForm');
+  if (scanReceiptForm) scanReceiptForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('scanMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const file = e.target.querySelector('input[name="receipt_file"]').files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.file_not_image'); msg.className = 'form-msg error'; return; }
+    if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.file_too_large'); msg.className = 'form-msg error'; return; }
+    msg.textContent = t('ai.scanning');
+    const base64 = await fileToBase64(file);
+    const { data, error } = await supabaseClient.functions.invoke('ai-assistant', {
+      body: { action: 'scan_receipt', projectId, imageBase64: base64, mediaType: file.type }
+    });
+    if (error || data?.error){
+      msg.textContent = (data && data.error) || (error && error.message) || t('ai.error_generic');
+      msg.className = 'form-msg error';
+      return;
+    }
+    msg.textContent = '';
+    renderScanResults(data.items || []);
+  });
+}
+
+async function init(){
+  if (!supabaseClient){
+    content.innerHTML = `<p class="form-msg error">${t('project.not_connected')}</p>`;
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  currentUser = session?.user || null;
+  renderNav();
+  await loadProject();
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    renderNav();
+    await loadProject();
+  });
+}
+init();
+</script>
+
+</body>
+</html>

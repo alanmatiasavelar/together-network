@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Log in — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_login">connect a free Supabase project to turn on real log in.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <div class="nav-auth">
+      <a class="btn btn-ghost" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main class="auth-page">
+  <div class="auth-card">
+    <a class="auth-back" href="index.html" data-i18n="common.back_to_home">← Back to home</a>
+    <h1 data-i18n="login.heading">Log in</h1>
+    <p class="auth-sub" data-i18n="login.sub">Welcome back — pick up where you left off.</p>
+
+    <form id="loginForm" class="auth-form">
+      <label><span data-i18n="login.email">Email</span><input type="email" required name="email" autocomplete="email"></label>
+      <label><span data-i18n="login.password">Password</span><input type="password" required name="password" minlength="6" autocomplete="current-password"></label>
+      <button class="btn btn-primary" type="submit" data-i18n="login.cta">Log in</button>
+      <p class="form-msg" id="loginMsg"></p>
+    </form>
+
+    <p class="auth-switch"><span data-i18n="login.switch">New here?</span> <a href="signup.html" data-i18n="login.switch_cta">Create an account →</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+  showConfigBannerIfNeeded();
+  document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+  wireLangSwitcher();
+  applyStaticTranslations();
+  function onLangChange(){}
+
+  if (supabaseClient) {
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session && session.user) window.location.href = 'feed.html';
+    }).catch(() => {});
+  }
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('loginMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    if (!supabaseClient){
+      msg.textContent = t('login.err_not_connected');
+      msg.className = 'form-msg error';
+      return;
+    }
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    const fd = new FormData(e.target);
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email: fd.get('email'),
+      password: fd.get('password')
+    });
+    submitBtn.disabled = false;
+    if (error){
+      msg.textContent = error.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    msg.textContent = t('login.msg_success');
+    msg.className = 'form-msg ok';
+    window.location.href = 'feed.html';
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to view real projects.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding-top:52px;padding-bottom:60px;">
+    <div id="pageContent"><p data-i18n="common.loading">Loading…</p></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  if (loaded) render();
+}
+
+const navAuth = document.getElementById('navAuth');
+const content = document.getElementById('pageContent');
+
+let currentUser = null;
+let myProjects = [];
+let myTasks = [];
+let loaded = false;
+
+function renderNav(){
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    navAuth.innerHTML = `
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+  }
+}
+
+function renderLoggedOut(){
+  content.innerHTML = `
+    <h1>${t('dashboard.heading')}</h1>
+    <p class="auth-sub" style="margin-top:8px;">${t('dashboard.login_prompt')}</p>
+    <div class="hero-ctas" style="margin-top:16px;">
+      <a class="btn btn-primary" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-ghost" href="signup.html">${t('nav.signup')}</a>
+    </div>
+  `;
+}
+
+async function loadDashboard(){
+  const { data: owned } = await supabaseClient
+    .from('projects')
+    .select('id, title, category, goal_type')
+    .eq('owner_id', currentUser.id);
+
+  const { data: collabRows } = await supabaseClient
+    .from('project_collaborators')
+    .select('project_id, projects(id, title, category, goal_type)')
+    .eq('user_id', currentUser.id)
+    .eq('status', 'approved');
+
+  const seen = new Set();
+  myProjects = [];
+  (owned || []).forEach(p => {
+    if (!seen.has(p.id)){ seen.add(p.id); myProjects.push({ ...p, role: 'manager' }); }
+  });
+  (collabRows || []).forEach(row => {
+    const p = row.projects;
+    if (p && !seen.has(p.id)){ seen.add(p.id); myProjects.push({ ...p, role: 'collaborator' }); }
+  });
+
+  const { data: assignedRows } = await supabaseClient
+    .from('task_assignees')
+    .select('task_id, project_tasks(id, title, status, due_date, project_id, projects(id, title))')
+    .eq('user_id', currentUser.id);
+
+  myTasks = (assignedRows || [])
+    .map(r => r.project_tasks)
+    .filter(tk => tk && tk.status !== 'approved')
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date) - new Date(b.due_date);
+    });
+
+  loaded = true;
+  render();
+}
+
+function render(){
+  let html = `<h1>${t('dashboard.heading')}</h1>`;
+
+  html += `<div class="section-block" style="margin-top:28px;"><h2>${t('dashboard.my_projects')}</h2>`;
+  if (myProjects.length === 0){
+    html += `<p class="credits-note">${t('dashboard.no_projects')}</p>`;
+  } else {
+    html += `<div class="dash-project-grid">`;
+    myProjects.forEach(p => {
+      html += `
+        <div class="dash-project-card">
+          <span class="role-badge">${p.role === 'manager' ? t('dashboard.role_manager') : t('dashboard.role_collaborator')}</span>
+          <h4>${escapeHTML(p.title)}</h4>
+          <div class="card-row" style="margin-bottom:12px;">
+            <span class="chip">${catLabel[p.category] || 'Other'}</span>
+            <span class="chip type-${p.goal_type}">${p.goal_type === 'profit' ? t('feed.type.profit') : t('feed.type.nonprofit')}</span>
+          </div>
+          <div class="card-links">
+            <a class="view-project-link" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a>
+            <a class="view-project-link" href="project.html?id=${p.id}">${t('feed.lets_do_it')}</a>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="section-block"><h2>${t('dashboard.my_tasks')}</h2>`;
+  if (myTasks.length === 0){
+    html += `<p class="credits-note">${t('dashboard.no_tasks')}</p>`;
+  } else {
+    myTasks.forEach(tk => {
+      html += `
+        <div class="dash-task-row">
+          <div>
+            <div class="task-title">${escapeHTML(tk.title)}</div>
+            <div class="task-project">${t('dashboard.in_project')} <a href="project.html?id=${tk.project_id}">${escapeHTML(tk.projects?.title || '')}</a>${tk.due_date ? ' · ' + t('project.due') + ' ' + escapeHTML(tk.due_date) : ''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="status-badge ${tk.status}">${t('project.col_' + tk.status)}</span>
+            <a class="icon-btn" href="task.html?id=${tk.id}">👁 ${t('project.view_workflow')}</a>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
+  content.innerHTML = html;
+}
+
+async function init(){
+  if (!supabaseClient){
+    renderLoggedOut();
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  currentUser = session?.user || null;
+  renderNav();
+  if (!currentUser){
+    renderLoggedOut();
+    return;
+  }
+  await loadDashboard();
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    renderNav();
+    if (currentUser) await loadDashboard();
+    else renderLoggedOut();
+  });
+}
+init();
+</script>
+
+</body>
+</html>

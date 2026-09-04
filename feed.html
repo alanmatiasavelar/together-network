@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Feed — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to turn on the live feed, posting, and supporting.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="index.html" data-i18n="nav.home">Home</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <section style="padding-top:52px;">
+    <div class="wrap">
+
+      <div class="feed-page-head reveal">
+        <div>
+          <p class="eyebrow" data-i18n="feed.eyebrow">Live feed</p>
+          <h1 style="margin-top:10px;" data-i18n="feed.heading">What people are building right now.</h1>
+        </div>
+      </div>
+
+      <p class="session-banner" id="loggedOutBanner" hidden>
+        <span data-i18n="feed.guest_banner_1">Browsing as a guest.</span>
+        <a href="login.html" data-i18n="feed.guest_banner_login">Log in</a>
+        <span data-i18n="feed.guest_banner_or">or</span>
+        <a href="signup.html" data-i18n="feed.guest_banner_signup">sign up free</a>
+        <span data-i18n="feed.guest_banner_2">to support a project or start your own.</span>
+      </p>
+
+      <div id="newProjectSection">
+      <details class="new-project">
+        <summary data-i18n="feed.start_project">Start a project</summary>
+        <div class="new-project-body">
+          <form id="projectForm" class="auth-form">
+            <label><span data-i18n="feed.title_label">Title</span><input type="text" required name="title" maxlength="80"></label>
+            <label><span data-i18n="feed.pitch_label">One-line pitch</span><input type="text" required name="pitch" maxlength="140"></label>
+            <label><span data-i18n="feed.desc_label">Description (optional)</span><textarea name="description" rows="3" maxlength="600"></textarea></label>
+            <label><span data-i18n="feed.category_label">Category</span>
+              <select name="category">
+                <option value="community" data-i18n="feed.cat.community">Community</option>
+                <option value="tech" data-i18n="feed.cat.tech">Tech</option>
+                <option value="social-impact" data-i18n="feed.cat.social_impact">Social impact</option>
+                <option value="business" data-i18n="feed.cat.business">Business</option>
+                <option value="creative" data-i18n="feed.cat.creative">Creative</option>
+                <option value="other" selected data-i18n="feed.cat.other">Other</option>
+              </select>
+            </label>
+            <label><span data-i18n="feed.type_label">Type</span>
+              <select name="goal_type">
+                <option value="nonprofit" data-i18n="feed.type.nonprofit">Non-profit / idea support</option>
+                <option value="profit" data-i18n="feed.type.profit">For-profit / investable</option>
+              </select>
+            </label>
+            <label><span data-i18n="feed.funding_label">Funding goal in USD (optional)</span><input type="number" name="funding_target" min="0" step="1"></label>
+            <label><span data-i18n="feed.whatsapp_label">WhatsApp group link (optional)</span><input type="url" name="whatsapp_link" placeholder="https://chat.whatsapp.com/..."></label>
+            <label><span data-i18n="feed.drive_label">Google Drive folder link (optional)</span><input type="url" name="drive_link" placeholder="https://drive.google.com/drive/folders/..."></label>
+            <button class="btn btn-primary" type="submit" data-i18n="feed.post_cta">Post project</button>
+            <p class="form-msg" id="projectMsg"></p>
+          </form>
+        </div>
+      </details>
+      </div>
+
+      <div class="filter-bar">
+        <select id="filterCategory">
+          <option value="all" data-i18n="feed.filter.all_categories">All categories</option>
+          <option value="community" data-i18n="feed.cat.community">Community</option>
+          <option value="tech" data-i18n="feed.cat.tech">Tech</option>
+          <option value="social-impact" data-i18n="feed.cat.social_impact">Social impact</option>
+          <option value="business" data-i18n="feed.cat.business">Business</option>
+          <option value="creative" data-i18n="feed.cat.creative">Creative</option>
+          <option value="other" data-i18n="feed.cat.other">Other</option>
+        </select>
+        <select id="filterType">
+          <option value="all" data-i18n="feed.filter.all_types">All types</option>
+          <option value="nonprofit" data-i18n="feed.type.nonprofit">Non-profit</option>
+          <option value="profit" data-i18n="feed.type.profit">For-profit</option>
+        </select>
+      </div>
+
+      <div class="feed-grid" id="feedGrid">
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.community">Community</span><span class="chip type-nonprofit" data-i18n="feed.type.nonprofit">Non-profit</span></div>
+          <h3>Neighborhood tool library</h3>
+          <p class="pitch">A shared shed of tools anyone on the block can borrow.</p>
+          <div class="card-row"><span class="chip">🤝 3 <span data-i18n="feed.collaborating">collaborating</span></span></div>
+          <div class="credits-block">$0 <span data-i18n="feed.credits_from">in supporter credits from</span> <span class="credits-note">(<span data-i18n="feed.credits_note">Self-reported — sent directly via PayPal, not verified by us.</span>)</span></div>
+          <div class="feed-card-bottom"><span class="owner"><span data-i18n="feed.manager">Manager:</span> Marta S.</span></div>
+        </article>
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.tech">Tech</span><span class="chip type-nonprofit" data-i18n="feed.type.nonprofit">Non-profit</span></div>
+          <h3>Open-source invoice app</h3>
+          <p class="pitch">A free invoicing tool for freelancers, built in the open.</p>
+          <div class="card-row"><span class="chip">🤝 7 <span data-i18n="feed.collaborating">collaborating</span></span></div>
+          <div class="credits-block">$0 <span data-i18n="feed.credits_from">in supporter credits from</span></div>
+          <div class="feed-card-bottom"><span class="owner"><span data-i18n="feed.manager">Manager:</span> Dev Collective</span></div>
+        </article>
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.business">Business</span><span class="chip type-profit" data-i18n="feed.type.profit">For-profit</span></div>
+          <h3>Cold-brew subscription</h3>
+          <p class="pitch">Small-batch cold brew, delivered weekly — looking for co-founders.</p>
+          <div class="card-row"><span class="chip">🤝 2 <span data-i18n="feed.collaborating">collaborating</span></span></div>
+          <div class="credits-block">$0 <span data-i18n="feed.credits_from">in supporter credits from</span></div>
+          <div class="feed-card-bottom"><span class="owner"><span data-i18n="feed.manager">Manager:</span> Renan A.</span></div>
+        </article>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  renderFilteredFeed();
+}
+
+let currentUser = null;
+
+function renderNav(){
+  const nav = document.getElementById('navAuth');
+  const banner = document.getElementById('loggedOutBanner');
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    nav.innerHTML = `
+      <a class="btn btn-ghost btn-small" href="dashboard.html">${t('nav.dashboard')}</a>
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <button class="btn btn-ghost btn-small" id="navLogout">${t('nav.logout')}</button>
+    `;
+    document.getElementById('navLogout').addEventListener('click', handleLogout);
+    banner.hidden = true;
+  } else {
+    nav.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+    if (supabaseClient) banner.hidden = false;
+  }
+}
+
+async function handleLogout(){
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  currentUser = null;
+  renderNav();
+  loadFeed();
+}
+
+function cardHTML(p, opts){
+  let mediaBlock = '';
+  if (!opts.example) {
+    if (p.image_url) {
+      mediaBlock += `<img class="feed-card-image" src="${escapeHTML(p.image_url)}" alt="${escapeHTML(p.title)}" loading="lazy" onerror="this.remove()">`;
+    }
+    if (p.youtube_link) {
+      mediaBlock += youtubeEmbedHTML(p.youtube_link);
+    }
+  }
+
+  let collabBlock = '';
+  if (opts.example) {
+    collabBlock = `<span class="chip">🤝 ${p.collabCount || 0} ${t('feed.collaborating')}</span>`;
+  } else {
+    const collabCount = (p.project_collaborators || []).filter(c => c.status === 'approved').length;
+    collabBlock = `<span class="chip">🤝 ${collabCount} ${t('feed.collaborating')}</span>`;
+  }
+
+  let creditsBlock = '';
+  if (opts.example) {
+    creditsBlock = `<div class="credits-block">$${p.credits || 0} ${t('feed.credits_from')} <span class="credits-note">(${t('feed.credits_note')})</span></div>`;
+  } else {
+    const supportRows = p.project_supporters || [];
+    const supportCount = supportRows.length;
+    const totalCredits = supportRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+    const peopleWord = supportCount === 1 ? t('feed.credits_person') : t('feed.credits_people');
+    creditsBlock = `
+      <div class="credits-block">
+        <span class="credits-total">$${totalCredits.toFixed(2)}</span> ${t('feed.credits_from')} ${supportCount} ${peopleWord}
+        <div class="credits-note">${t('feed.credits_note')}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <article class="feed-card ${opts.example ? 'example' : ''}">
+      ${opts.example ? `<span class="example-tag">${t('feed.example_tag')}</span>` : ''}
+      ${mediaBlock}
+      <div class="feed-card-top">
+        <span class="chip">${catLabel[p.category] || 'Other'}</span>
+        <span class="chip type-${p.goal_type}">${p.goal_type === 'profit' ? t('feed.type.profit') : t('feed.type.nonprofit')}</span>
+      </div>
+      <h3>${escapeHTML(p.title)}</h3>
+      <p class="pitch">${escapeHTML(p.pitch)}</p>
+      <div class="card-row">${collabBlock}</div>
+      ${creditsBlock}
+      <div class="feed-card-bottom">
+        <span class="owner">${t('feed.manager')} ${escapeHTML(p.owner_name)}</span>
+        ${opts.example ? '' : `
+          <div class="card-links">
+            <a class="view-project-link" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a>
+            <a class="view-project-link" href="project.html?id=${p.id}">${t('feed.lets_do_it')}</a>
+          </div>
+        `}
+      </div>
+    </article>
+  `;
+}
+
+let allProjects = [];
+
+async function loadFeed(){
+  const grid = document.getElementById('feedGrid');
+  if (!supabaseClient) return;
+
+  const { data: projects, error } = await supabaseClient
+    .from('projects')
+    .select('*, project_supporters(user_id, amount), project_collaborators(status)')
+    .order('created_at', { ascending: false });
+
+  if (error){
+    grid.innerHTML = `<p class="feed-empty">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
+    return;
+  }
+  allProjects = projects || [];
+  renderFilteredFeed();
+}
+
+function renderFilteredFeed(){
+  const grid = document.getElementById('feedGrid');
+  if (!supabaseClient) return;
+  const category = document.getElementById('filterCategory')?.value || 'all';
+  const type = document.getElementById('filterType')?.value || 'all';
+
+  let filtered = allProjects;
+  if (category !== 'all') filtered = filtered.filter(p => p.category === category);
+  if (type !== 'all') filtered = filtered.filter(p => p.goal_type === type);
+
+  if (filtered.length === 0){
+    grid.innerHTML = `<p class="feed-empty">${allProjects.length === 0 ? t('feed.empty_none') : t('feed.empty_filtered')}</p>`;
+    return;
+  }
+  grid.innerHTML = filtered.map(p => cardHTML(p, { example: false })).join('');
+}
+
+document.getElementById('projectForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('projectMsg');
+  msg.textContent = ''; msg.className = 'form-msg';
+  if (!supabaseClient){ msg.textContent = t('project.not_connected'); msg.className = 'form-msg error'; return; }
+  if (!currentUser){ msg.textContent = t('project.login_to_join'); msg.className = 'form-msg error'; return; }
+  const fd = new FormData(e.target);
+  const waInput = (fd.get('whatsapp_link') || '').trim();
+  if (waInput && !WHATSAPP_LINK_PATTERN.test(waInput)){
+    msg.textContent = t('feed.whatsapp_err');
+    msg.className = 'form-msg error';
+    return;
+  }
+  const driveInput = (fd.get('drive_link') || '').trim();
+  if (driveInput && !DRIVE_LINK_PATTERN.test(driveInput)){
+    msg.textContent = t('feed.drive_err');
+    msg.className = 'form-msg error';
+    return;
+  }
+  const ownerName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+  const payload = {
+    owner_id: currentUser.id,
+    owner_name: ownerName,
+    title: fd.get('title'),
+    pitch: fd.get('pitch'),
+    description: fd.get('description') || null,
+    category: fd.get('category'),
+    goal_type: fd.get('goal_type'),
+    funding_target: fd.get('funding_target') ? Number(fd.get('funding_target')) : null,
+    whatsapp_link: waInput || null,
+    drive_link: driveInput || null
+  };
+  const { error } = await supabaseClient.from('projects').insert(payload);
+  if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+  msg.textContent = t('common.save') + '!'; msg.className = 'form-msg ok';
+  e.target.reset();
+  e.target.closest('details').open = false;
+  loadFeed();
+});
+
+async function checkProjectLimit(){
+  const section = document.getElementById('newProjectSection');
+  if (!supabaseClient || !currentUser) return;
+  const { data: profile } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
+  if (profile && profile.is_premium) return;
+  const { count } = await supabaseClient.from('projects').select('id', { count: 'exact', head: true }).eq('owner_id', currentUser.id);
+  if ((count || 0) >= 1){
+    section.innerHTML = `
+      <div class="session-banner">
+        ${t('feed.limit_reached_1')} <a href="premium.html">${t('pricing.premium.cta')}</a> ${t('feed.limit_reached_2')}
+      </div>
+    `;
+  }
+}
+
+async function init(){
+  document.getElementById('filterCategory').addEventListener('change', renderFilteredFeed);
+  document.getElementById('filterType').addEventListener('change', renderFilteredFeed);
+
+  if (supabaseClient){
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    currentUser = session?.user || null;
+    supabaseClient.auth.onAuthStateChange((_event, session) => {
+      currentUser = session?.user || null;
+      renderNav();
+      loadFeed();
+      checkProjectLimit();
+    });
+  }
+  renderNav();
+  loadFeed();
+  checkProjectLimit();
+
+  const els = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window){
+    const io = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('animate-in'); io.unobserve(e.target); } });
+    },{threshold:0.12});
+    els.forEach(el=>io.observe(el));
+  }
+}
+init();
+</script>
+
+</body>
+</html>

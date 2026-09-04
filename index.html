@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Together — Join efforts, not feeds</title>
+<meta name="description" content="Together is where people, companies, nonprofits, and governments turn ideas into projects — pooling money, time, and tools instead of just scrolling." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_accounts">connect a free Supabase project to turn on real sign-up, log in, and the live feed.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links">
+      <a href="feed.html" data-i18n="nav.feed">Feed</a>
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+    </nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main id="top">
+
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow" data-i18n="hero.eyebrow">Pre‑launch · ConOps v1</p>
+        <h1><span data-i18n="hero.headline_1">Stop scrolling. Start</span> <em data-i18n="hero.headline_em">building</em> <span data-i18n="hero.headline_2">— together.</span></h1>
+        <p class="lede" data-i18n="hero.lede">Together is a place to turn an idea into a project. Pool money, time, and tools with people, companies, nonprofits, and government bodies who want to help build it — instead of just watching a feed.</p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="signup.html" data-i18n="hero.cta_primary">Get started free</a>
+          <a class="btn btn-ghost" href="feed.html" data-i18n="hero.cta_secondary">See the feed</a>
+        </div>
+        <p class="hero-note" data-i18n="hero.note">Free to start · $2 for the full toolkit</p>
+      </div>
+      <div class="rings" aria-hidden="true">
+        <div class="ring blue"></div>
+        <div class="ring orange"></div>
+        <div class="rings-center"><span>+ you</span></div>
+        <div class="rings-tag t1">Projects</div>
+        <div class="rings-tag t2">Supporters</div>
+        <div class="rings-tag t3">Shared tools</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feed" id="feed">
+    <div class="wrap">
+      <div class="section-head-row reveal">
+        <div class="section-head" style="margin-bottom:0;">
+          <p class="eyebrow" data-i18n="feed.eyebrow">Live feed</p>
+          <h2 data-i18n="feed.heading">What people are building right now.</h2>
+        </div>
+        <a class="btn btn-primary" href="feed.html" data-i18n="feed.cta">Go to the feed →</a>
+      </div>
+      <div class="feed-grid">
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.community">Community</span><span class="chip type-nonprofit" data-i18n="feed.type.nonprofit">Non-profit</span></div>
+          <h3>Neighborhood tool library</h3>
+          <p class="pitch">A shared shed of tools anyone on the block can borrow.</p>
+          <div class="feed-card-bottom"><span class="owner">by Marta S.</span><span class="chip">14 interested</span></div>
+        </article>
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.tech">Tech</span><span class="chip type-nonprofit" data-i18n="feed.type.nonprofit">Non-profit</span></div>
+          <h3>Open-source invoice app</h3>
+          <p class="pitch">A free invoicing tool for freelancers, built in the open.</p>
+          <div class="feed-card-bottom"><span class="owner">by Dev Collective</span><span class="chip">31 interested</span></div>
+        </article>
+        <article class="feed-card example">
+          <span class="example-tag" data-i18n="feed.example_tag">Example</span>
+          <div class="feed-card-top"><span class="chip" data-i18n="feed.cat.business">Business</span><span class="chip type-profit" data-i18n="feed.type.profit">For-profit</span></div>
+          <h3>Cold-brew subscription</h3>
+          <p class="pitch">Small-batch cold brew, delivered weekly — looking for co-founders.</p>
+          <div class="feed-card-bottom"><span class="owner">by Renan A.</span><span class="chip">8 interested</span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="idea">
+    <div class="wrap reveal">
+      <p class="eyebrow" data-i18n="idea.eyebrow">The idea</p>
+      <blockquote style="margin-top:18px;">
+        <span data-i18n="idea.text_1">A social network built around</span> <b data-i18n="idea.text_bold">niches, not noise</b> <span data-i18n="idea.text_2">— where the feed is made of real projects and real goals.</span> <span data-i18n="idea.text_3">Anyone can create one, and anyone can join one: individuals, third‑sector organizations, private companies, and government or public bodies.</span>
+      </blockquote>
+    </div>
+  </section>
+
+  <section id="roles">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="eyebrow" data-i18n="roles.eyebrow">Two ways in</p>
+        <h2 data-i18n="roles.heading">Start something, or join something.</h2>
+        <p data-i18n="roles.sub">Every project on Together has people building it and people backing it. You can be either — often both, on different projects.</p>
+      </div>
+
+      <div class="roles reveal">
+        <div class="role-card blue">
+          <h3 data-i18n="roles.start.title">Start a project</h3>
+          <p class="desc" data-i18n="roles.start.desc">Post the idea, set the goal, and open it up.</p>
+          <ul>
+            <li data-i18n="roles.start.li1">Create a project and put it on the feed</li>
+            <li data-i18n="roles.start.li2">Set goals and requirements for collaborators</li>
+            <li data-i18n="roles.start.li3">Invite people, and review who wants in</li>
+            <li data-i18n="roles.start.li4">Manage the team and the budget as it grows</li>
+            <li data-i18n="roles.start.li5">Track progress until the goal is reached</li>
+          </ul>
+        </div>
+        <div class="role-card orange">
+          <h3 data-i18n="roles.join.title">Join a project</h3>
+          <p class="desc" data-i18n="roles.join.desc">Find something worth your time or your money.</p>
+          <ul>
+            <li data-i18n="roles.join.li1">Browse a feed built from real projects, not posts</li>
+            <li data-i18n="roles.join.li2">Search for projects that match your skills or values</li>
+            <li data-i18n="roles.join.li3">Subscribe and send a proposal to join</li>
+            <li data-i18n="roles.join.li4">Contribute work, funding, or both</li>
+            <li data-i18n="roles.join.li5">Get paid, or get credit — your call going in</li>
+          </ul>
+        </div>
+      </div>
+      <p class="roles-note" data-i18n="roles.note">Individuals · Third‑sector orgs · Private companies · Government &amp; public bodies</p>
+    </div>
+  </section>
+
+  <section id="how" class="process">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="eyebrow" data-i18n="process.eyebrow">How a project moves</p>
+        <h2 data-i18n="process.heading">From idea to finished, in five stages.</h2>
+      </div>
+      <div class="steps reveal">
+        <div class="step"><div class="step-num">1</div><h4 data-i18n="process.1.title">Create</h4><p data-i18n="process.1.desc">Post the project and set the goal.</p></div>
+        <div class="step"><div class="step-num">2</div><h4 data-i18n="process.2.title">Recruit</h4><p data-i18n="process.2.desc">Invite collaborators, open it to supporters and sponsors.</p></div>
+        <div class="step"><div class="step-num">3</div><h4 data-i18n="process.3.title">Work</h4><p data-i18n="process.3.desc">Coordinate in shared tools spun up per task.</p></div>
+        <div class="step"><div class="step-num">4</div><h4 data-i18n="process.4.title">Track</h4><p data-i18n="process.4.desc">Watch progress against the goal, adjust as you go.</p></div>
+        <div class="step"><div class="step-num">5</div><h4 data-i18n="process.5.title">Finish</h4><p data-i18n="process.5.desc">Hit the goal, close the project, keep the credit.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tools">
+    <div class="wrap">
+      <div class="section-head reveal">
+        <p class="eyebrow" data-i18n="tools.eyebrow">On the roadmap</p>
+        <h2 data-i18n="tools.heading">Built to work with the tools you'd reach for anyway.</h2>
+        <p data-i18n="tools.sub">These connect automatically once they're wired up post-launch. For now, projects coordinate the plain way — sharing links and folders yourselves.</p>
+      </div>
+      <div class="integrations reveal">
+        <div class="integ-card">
+          <h4><span data-i18n="tools.ai.title">AI tools</span> <span class="soon-tag" data-i18n="tools.soon">Soon</span></h4>
+          <p data-i18n="tools.ai.desc">Will help managers structure a project's dashboard and filter incoming ideas and proposals.</p>
+          <div class="chips"><span class="chip">Dashboard setup</span><span class="chip">Idea filtering</span></div>
+        </div>
+        <div class="integ-card">
+          <h4><span data-i18n="tools.workspaces.title">Workspaces</span> <span class="soon-tag" data-i18n="tools.soon">Soon</span></h4>
+          <p data-i18n="tools.workspaces.desc">A WhatsApp group per task, plus shared folders for documents, presentations, and spreadsheets.</p>
+          <div class="chips"><span class="chip">WhatsApp</span><span class="chip">Google Drive</span><span class="chip">MS Teams</span><span class="chip">OneDrive</span></div>
+        </div>
+        <div class="integ-card">
+          <h4><span data-i18n="tools.payments.title">Payments</span> <span class="soon-tag" data-i18n="tools.soon">Soon</span></h4>
+          <p data-i18n="tools.payments.desc">For sponsors funding a project, and for collaborators getting paid for their work.</p>
+          <div class="chips"><span class="chip">Bank transfer</span><span class="chip">Pix</span><span class="chip">PayPal</span><span class="chip">Zelle</span></div>
+        </div>
+      </div>
+
+      <div class="sponsor-note reveal">
+        <b data-i18n="tools.sponsor_note_b">On sponsoring:</b> <span data-i18n="tools.sponsor_note">anyone can back a project, for profit or for the mission — a sponsor's share is set by how much of the total funding they put in. Government and public bodies can also back an idea without funding it, as a public show of support.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing" class="pricing">
+    <div class="wrap">
+      <div class="section-head reveal" style="margin-left:auto;margin-right:auto;text-align:center;">
+        <p class="eyebrow" style="justify-content:center;" data-i18n="pricing.eyebrow">Pricing</p>
+        <h2 data-i18n="pricing.heading">Start free. Upgrade when a second project needs you.</h2>
+      </div>
+      <div class="price-grid reveal">
+        <div class="price-card">
+          <div class="price-top"><h3 data-i18n="pricing.basic.title">Basic</h3></div>
+          <div class="price-amount">Free</div>
+          <p class="tag" data-i18n="pricing.basic.tag">One project, done properly.</p>
+          <ul>
+            <li data-i18n="pricing.basic.li1">1 active project</li>
+            <li data-i18n="pricing.basic.li2">Share it on the feed, and by link</li>
+            <li data-i18n="pricing.basic.li3">Receive and accept proposals</li>
+            <li data-i18n="pricing.basic.li4">Set goals and requirements</li>
+            <li data-i18n="pricing.basic.li5">1 WhatsApp group</li>
+          </ul>
+          <a class="btn btn-ghost" href="signup.html" data-i18n="pricing.basic.cta">Start free</a>
+        </div>
+        <div class="price-card featured">
+          <div class="price-top"><h3 data-i18n="pricing.premium.title">Premium</h3></div>
+          <div class="price-amount">$2 <small data-i18n="pricing.premium.one_time">one-time</small></div>
+          <p class="tag" data-i18n="pricing.premium.tag">For managers running more than one thing.</p>
+          <ul>
+            <li data-i18n="pricing.premium.li1">Everything in Basic</li>
+            <li data-i18n="pricing.premium.li2">Unlimited projects</li>
+            <li data-i18n="pricing.premium.li3">Full workspace &amp; payment integrations</li>
+            <li data-i18n="pricing.premium.li4">AI dashboard tools</li>
+          </ul>
+          <a class="btn btn-primary" href="premium.html" data-i18n="pricing.premium.cta">Go Premium</a>
+          <p class="fine" data-i18n="pricing.premium.fine">One-time $2 via PayPal. Log in or sign up first.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final-cta">
+    <div class="wrap reveal">
+      <p class="eyebrow" style="justify-content:center;" data-i18n="final.eyebrow">Join efforts</p>
+      <h2 style="margin-top:16px;" data-i18n="final.heading">Have something worth building? Start together.</h2>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="signup.html" data-i18n="final.cta">Create your account</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+  showConfigBannerIfNeeded();
+  document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+  wireLangSwitcher();
+  applyStaticTranslations();
+
+  function onLangChange(){ /* all text here is static, applyStaticTranslations() already covers it */ }
+
+  // Personalize the nav if the visitor is already logged in — purely a nice-to-have,
+  // the rest of the page works fine even if this never runs.
+  if (supabaseClient) {
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+      if (session && session.user) {
+        const name = session.user.user_metadata?.display_name || session.user.email.split('@')[0];
+        document.getElementById('navAuth').innerHTML = `
+          <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+          <a class="btn btn-primary" href="feed.html">${t('nav.go_to_feed')}</a>
+        `;
+      }
+    }).catch(() => {});
+  }
+
+  // Entrance animation only — content is visible by default either way.
+  const els = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window){
+    const io = new IntersectionObserver((entries)=>{
+      entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('animate-in'); io.unobserve(e.target); } });
+    },{threshold:0.12});
+    els.forEach(el=>io.observe(el));
+  }
+</script>
+
+</body>
+</html>

@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Go Premium — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_accounts">connect a free Supabase project to turn on accounts.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth"></div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main class="auth-page">
+  <div class="auth-card premium-card" id="premiumCard">
+    <a class="auth-back" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <p data-i18n="common.loading">Loading…</p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+
+const card = document.getElementById('premiumCard');
+const navAuth = document.getElementById('navAuth');
+let lastUser = null;
+
+function onLangChange(){
+  applyStaticTranslations();
+  renderNav(lastUser);
+  // re-render whichever state is currently showing, using the same data already loaded
+  if (currentProfile !== undefined) renderForState();
+}
+
+let currentProfile;
+
+function renderNav(user){
+  lastUser = user;
+  if (user){
+    const name = user.user_metadata?.display_name || user.email.split('@')[0];
+    navAuth.innerHTML = `
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+  }
+}
+
+function renderLoggedOut(){
+  card.innerHTML = `
+    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <h1>${t('premium.heading')}</h1>
+    <p class="auth-sub">${t('premium.sub_login_first')}</p>
+    <div class="hero-ctas" style="margin-top:6px;">
+      <a class="btn btn-primary" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-ghost" href="signup.html">${t('nav.signup')}</a>
+    </div>
+  `;
+}
+
+function renderAlreadyPremium(){
+  card.innerHTML = `
+    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <div class="premium-already">
+      <h2 style="font-size:20px;margin-bottom:6px;">${t('premium.already_title')}</h2>
+      <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.already_sub')}</p>
+    </div>
+    <div class="hero-ctas" style="margin-top:20px;">
+      <a class="btn btn-primary" href="feed.html">${t('premium.go_to_feed')}</a>
+    </div>
+  `;
+}
+
+const PAYMENT_EMAIL = 'aolbr_mail@yahoo.com.br';
+
+function renderPaymentForm(user){
+  const paypalBlock = isPaypalConfigured
+    ? `
+      <div id="paypal-button-container"></div>
+      <p class="form-msg" id="paypalMsg"></p>
+      <p class="premium-note">${t('premium.disclosure')}</p>
+    `
+    : `<p class="form-msg error">${t('premium.not_connected')}</p>`;
+
+  card.innerHTML = `
+    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <h1>${t('premium.heading')}</h1>
+    <p class="auth-sub">${t('premium.sub')}</p>
+    <div class="premium-price">$2 <small>${t('premium.price_note')}</small></div>
+    <ul class="premium-features">
+      <li>${t('premium.li1')}</li>
+      <li>${t('premium.li2')}</li>
+      <li>${t('premium.li3')}</li>
+      <li>${t('premium.li4')}</li>
+    </ul>
+
+    <div class="checkout-method">
+      <h3>💳 ${t('premium.pay_card_paypal')}</h3>
+      <p class="premium-note">${t('premium.card_note')}</p>
+      ${paypalBlock}
+    </div>
+
+    <div class="checkout-divider">${t('premium.or')}</div>
+
+    <div class="checkout-method">
+      <h3>🇧🇷 ${t('premium.pay_pix')}</h3>
+      <p class="premium-note">${t('premium.pix_instructions')}</p>
+      <div class="pix-key-box">
+        <code id="pixKeyText">${PAYMENT_EMAIL}</code>
+        <button class="btn btn-ghost btn-small" id="copyPixKey" type="button">${t('premium.copy_key')}</button>
+      </div>
+      <button class="btn btn-primary btn-small" id="confirmPixBtn" type="button">${t('premium.confirm_pix_sent')}</button>
+      <p class="form-msg" id="pixMsg"></p>
+      <p class="premium-note">${t('premium.pix_disclosure')}</p>
+    </div>
+
+    <p class="premium-note">${t('premium.same_email_note')} ${PAYMENT_EMAIL}</p>
+  `;
+  if (isPaypalConfigured) loadPaypalSdkAndRender(user);
+  wirePixCheckout(user);
+}
+
+function wirePixCheckout(user){
+  const copyBtn = document.getElementById('copyPixKey');
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(PAYMENT_EMAIL);
+      copyBtn.textContent = t('premium.copied');
+      setTimeout(() => { copyBtn.textContent = t('premium.copy_key'); }, 1500);
+    } catch (err) {
+      // clipboard API unavailable — the key is already shown as selectable text, so this is a soft failure
+    }
+  });
+
+  const confirmBtn = document.getElementById('confirmPixBtn');
+  if (confirmBtn) confirmBtn.addEventListener('click', async () => {
+    const msg = document.getElementById('pixMsg');
+    confirmBtn.disabled = true;
+    msg.textContent = t('premium.confirming');
+    msg.className = 'form-msg';
+    const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
+    confirmBtn.disabled = false;
+    if (error){
+      msg.textContent = `${t('premium.err_account_update')} (${error.message}).`;
+      msg.className = 'form-msg error';
+      return;
+    }
+    renderSuccess(null);
+  });
+}
+
+function renderSuccess(orderId){
+  card.innerHTML = `
+    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <div class="premium-success">
+      <h2>${t('premium.success_title')}</h2>
+      <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.already_sub')}${orderId ? ' ' + t('premium.order_id') + ' ' + escapeHTML(orderId) : ''}</p>
+    </div>
+    <div class="hero-ctas" style="margin-top:20px;">
+      <a class="btn btn-primary" href="feed.html">${t('premium.start_new')}</a>
+    </div>
+  `;
+}
+
+let currentState = 'loading';
+let stateArgs = null;
+function renderForState(){
+  if (currentState === 'loggedOut') renderLoggedOut();
+  else if (currentState === 'alreadyPremium') renderAlreadyPremium();
+  else if (currentState === 'paymentForm') renderPaymentForm(stateArgs);
+}
+
+function loadPaypalSdkAndRender(user){
+  const msg = document.getElementById('paypalMsg');
+  const existing = document.getElementById('paypal-sdk-script');
+  if (existing) existing.remove();
+  const s = document.createElement('script');
+  s.id = 'paypal-sdk-script';
+  s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(PAYPAL_CLIENT_ID)}&currency=USD`;
+  s.onload = () => renderPaypalButtons(user);
+  s.onerror = () => { msg.textContent = t('premium.err_load'); msg.className = 'form-msg error'; };
+  document.head.appendChild(s);
+}
+
+function renderPaypalButtons(user){
+  const msg = document.getElementById('paypalMsg');
+  if (!window.paypal || !window.paypal.Buttons){
+    msg.textContent = t('premium.err_init');
+    msg.className = 'form-msg error';
+    return;
+  }
+  window.paypal.Buttons({
+    style: { layout: 'vertical', shape: 'pill', label: 'pay' },
+    createOrder: function(data, actions){
+      return actions.order.create({
+        purchase_units: [{
+          description: 'Together Premium — unlimited projects',
+          amount: { value: '2.00', currency_code: 'USD' }
+        }]
+      });
+    },
+    onApprove: async function(data, actions){
+      msg.textContent = t('premium.confirming');
+      msg.className = 'form-msg';
+      let order;
+      try {
+        order = await actions.order.capture();
+      } catch (err) {
+        msg.textContent = t('premium.err_incomplete');
+        msg.className = 'form-msg error';
+        return;
+      }
+      if (!order || order.status !== 'COMPLETED'){
+        msg.textContent = t('premium.err_not_completed');
+        msg.className = 'form-msg error';
+        return;
+      }
+      const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
+      if (error){
+        msg.textContent = `${t('premium.err_account_update')} (${error.message}). ${t('premium.err_save_order')} ${order.id}`;
+        msg.className = 'form-msg error';
+        return;
+      }
+      renderSuccess(order.id);
+    },
+    onCancel: function(){
+      msg.textContent = t('premium.cancelled');
+      msg.className = 'form-msg';
+    },
+    onError: function(err){
+      msg.textContent = t('premium.err_generic');
+      msg.className = 'form-msg error';
+    }
+  }).render('#paypal-button-container');
+}
+
+async function init(){
+  if (!supabaseClient){
+    currentState = 'loggedOut';
+    renderLoggedOut();
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  const user = session?.user || null;
+  renderNav(user);
+  if (!user){
+    currentState = 'loggedOut';
+    renderLoggedOut();
+    return;
+  }
+  const { data: profile, error } = await supabaseClient.from('profiles').select('is_premium').eq('id', user.id).single();
+  if (error){
+    card.innerHTML = `<a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
+    return;
+  }
+  currentProfile = profile;
+  if (profile && profile.is_premium){
+    currentState = 'alreadyPremium';
+    renderAlreadyPremium();
+    return;
+  }
+  currentState = 'paymentForm';
+  stateArgs = user;
+  renderPaymentForm(user);
+}
+init();
+</script>
+
+</body>
+</html>
