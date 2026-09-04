@@ -492,9 +492,9 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 .chat-msg.other .chat-msg-bubble{background:var(--mist);color:var(--ink);border-bottom-left-radius:4px;}
 .chat-msg.own .chat-msg-bubble{background:var(--blue);color:#fff;border-bottom-right-radius:4px;}
 .chat-msg-time{font-size:11px;color:var(--ink-soft);margin-top:2px;padding:0 4px;}
-.chat-form{display:flex;gap:8px;margin-top:14px;}
-.chat-form textarea{flex:1;resize:none;}
-.chat-form button{align-self:flex-end;}
+.chat-form{display:flex;gap:8px;margin-top:14px;align-items:flex-end;}
+.chat-form textarea{flex:1;resize:none;max-height:140px;overflow-y:auto;}
+.chat-form button{align-self:flex-end;flex:none;}
 
 /* ---------- Collaborators & credits on a project card ---------- */
 .collab-btn{
@@ -717,3 +717,63 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 }
 .qr-method .add-inline{text-align:left;margin-top:10px;}
 .qr-method .icon-btn{margin-top:8px;}
+
+/* ---------- Keyboard focus (accessibility) ---------- */
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,
+summary:focus-visible,[tabindex]:focus-visible{
+  outline:2px solid var(--blue);outline-offset:2px;border-radius:6px;
+}
+.btn:focus-visible,.tab-bar a:focus-visible,.tab-bar button:focus-visible,.chip:focus-visible,
+.support-btn:focus-visible,.collab-btn:focus-visible,.rsvp-btn:focus-visible,.lang-switcher:focus-visible{
+  outline-offset:2px;border-radius:100px;
+}
+
+/* ---------- Tactile feedback on interactive controls ---------- */
+.btn:active:not(:disabled){transform:scale(0.97);}
+.support-btn:active:not(:disabled),.collab-btn:active:not(:disabled),.rsvp-btn:active,.icon-btn:active{transform:scale(0.95);}
+.support-btn,.collab-btn,.rsvp-btn{transition:transform .12s ease, border-color .18s ease, color .18s ease, background .18s ease;}
+.icon-btn{transition:transform .12s ease, color .18s ease;}
+.tab-bar button,.tab-bar a{transition:background .18s ease, color .18s ease, box-shadow .18s ease;}
+.tab-bar button:not(.active):hover,.tab-bar a:hover{color:var(--ink);}
+
+/* ---------- Card hover affordance: cards that hold a link/action inside
+   get a soft lift so the whole surface reads as interactive, not just the
+   small text link buried in it. ---------- */
+.feed-card,.dash-project-card,.post-card,.event-card,.poll-card,.task-card,.integ-card,.role-card{
+  transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.feed-card:hover,.dash-project-card:hover,.post-card:hover,.event-card:hover,.poll-card:hover,
+.task-card:hover,.integ-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 16px 32px -20px rgba(44,55,66,0.28);
+  border-color:var(--blue);
+}
+.feed-card.example:hover{border-color:var(--line);transform:none;box-shadow:none;}
+.view-project-link,.card-links a{transition:gap .18s ease;}
+.view-project-link:hover,.card-links a:hover{gap:9px;}
+
+/* ---------- Loading state ---------- */
+.loading-state{display:flex;align-items:center;gap:10px;color:var(--ink-soft);font-size:14.5px;padding:36px 0;}
+.spinner{
+  width:18px;height:18px;flex:none;border-radius:50%;
+  border:2.5px solid var(--line);border-top-color:var(--blue);
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion: reduce){.spinner{animation-duration:1.6s;}}
+.btn .spinner{width:14px;height:14px;border-width:2px;border-color:rgba(255,255,255,0.4);border-top-color:#fff;}
+.btn-ghost .spinner{border-color:var(--line);border-top-color:var(--blue);}
+
+/* ---------- Clearer form feedback ---------- */
+.form-msg{transition:opacity .15s ease;}
+.form-msg.error,.form-msg.ok{
+  display:inline-flex;align-items:center;gap:6px;padding:2px 0;font-weight:500;
+}
+.form-msg.error::before{content:"⚠";flex:none;}
+.form-msg.ok::before{content:"✓";flex:none;}
+
+/* ---------- Thin, themed scrollbars on overflow panes ---------- */
+.chat-log,.assignee-checks{scrollbar-width:thin;scrollbar-color:var(--line) transparent;}
+.chat-log::-webkit-scrollbar,.assignee-checks::-webkit-scrollbar{width:7px;}
+.chat-log::-webkit-scrollbar-thumb,.assignee-checks::-webkit-scrollbar-thumb{background:var(--line);border-radius:100px;}
+.chat-log::-webkit-scrollbar-track,.assignee-checks::-webkit-scrollbar-track{background:transparent;}

@@ -34,7 +34,7 @@
 <main>
   <div class="wrap" style="padding-top:40px;padding-bottom:60px;max-width:760px;">
     <a class="auth-back" id="backLink" href="feed.html" data-i18n="task.back_to_project">← Back to project</a>
-    <div id="pageContent"><p data-i18n="common.loading">Loading…</p></div>
+    <div id="pageContent"><div class="loading-state"><span class="spinner" aria-hidden="true"></span><span data-i18n="common.loading">Loading…</span></div></div>
   </div>
 </main>
 
@@ -162,8 +162,8 @@ function render(){
     <div class="section-block" style="margin-top:20px;">
       <div class="chat-log" id="chatLog"></div>
       <form id="chatForm" class="chat-form">
-        <textarea name="body" rows="1" placeholder="${t('chat.placeholder')}" required maxlength="4000"></textarea>
-        <button class="btn btn-primary btn-small" type="submit">${t('chat.send')}</button>
+        <textarea name="body" id="chatInput" rows="1" placeholder="${t('chat.placeholder')}" required maxlength="4000"></textarea>
+        <button class="btn btn-primary btn-small" type="submit" id="chatSendBtn" disabled>${t('chat.send')}</button>
       </form>
       <p class="form-msg" id="chatMsg"></p>
     </div>
@@ -173,17 +173,37 @@ function render(){
   wireEvents();
 }
 
+function autoGrowTextarea(el){
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+}
+
 function wireEvents(){
   const form = document.getElementById('chatForm');
   if (!form) return;
+  const textarea = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('chatSendBtn');
+
+  textarea.addEventListener('input', () => {
+    sendBtn.disabled = textarea.value.trim().length === 0;
+    autoGrowTextarea(textarea);
+  });
+
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      if (!sendBtn.disabled) form.requestSubmit();
+    }
+  });
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('chatMsg');
-    const textarea = e.target.querySelector('textarea[name="body"]');
     const body = (textarea.value || '').trim();
     if (!body) return;
     const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
     textarea.disabled = true;
+    sendBtn.disabled = true;
     const { error } = await supabaseClient.from('project_chat_messages').insert({
       project_id: projectId, user_id: currentUser.id, user_name: userName, body
     });
@@ -191,10 +211,13 @@ function wireEvents(){
     if (error){
       msg.textContent = t('chat.err_generic');
       msg.className = 'form-msg error';
+      sendBtn.disabled = false;
+      textarea.focus();
       return;
     }
     msg.textContent = '';
     e.target.reset();
+    autoGrowTextarea(textarea);
     textarea.focus();
   });
 }
