@@ -1111,3 +1111,167 @@ begin
     alter publication supabase_realtime add table project_chat_messages;
   end if;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- POST VISIBILITY TOGGLE: lets a project owner flag one of their public
+-- updates (project_posts) to also appear in the "Updates" stream on the
+-- main feed page, not just on the project's own Learn More page.
+-- ---------------------------------------------------------------------------
+alter table project_posts add column if not exists show_on_main_feed boolean not null default false;
+
+-- ---------------------------------------------------------------------------
+-- PROJECT LIFECYCLE STAGE: Create -> Recruit -> Work -> Track -> Finish,
+-- matching the 5-stage flow already promised on the marketing page.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists stage text not null default 'create';
+alter table projects drop constraint if exists projects_stage_check;
+alter table projects add constraint projects_stage_check
+  check (stage in ('create','recruit','work','track','finish'));
+
+-- ---------------------------------------------------------------------------
+-- NOTIFICATIONS: a per-user inbox. Rows are inserted by SECURITY DEFINER
+-- trigger functions below (never directly by clients), so a user can only
+-- ever see notifications actually generated for them by the system.
+-- ---------------------------------------------------------------------------
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null,
+  title text not null,
+  body text,
+  link text,
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists notifications_user_id_created_at_idx
+  on notifications (user_id, created_at desc);
+
+alter table notifications enable row level security;
+
+drop policy if exists "Users read own notifications" on notifications;
+create policy "Users read own notifications" on notifications
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "Users update own notifications" on notifications;
+create policy "Users update own notifications" on notifications
+  for update using (auth.uid() = user_id);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'notifications'
+  ) then
+    alter publication supabase_realtime add table notifications;
+  end if;
+end $$;
+
+-- New join request -> notify the project owner.
+create or replace function public.notify_new_join_request()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status = 'pending' then
+    insert into notifications (user_id, type, title, body, link)
+    select p.owner_id, 'join_request',
+      'New request to join ' || p.title,
+      coalesce(pr.display_name, 'Someone') || ' wants to join your project.',
+      'project.html?id=' || p.id
+    from projects p
+    left join profiles pr on pr.id = new.user_id
+    where p.id = new.project_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_new_join_request on project_collaborators;
+create trigger trg_notify_new_join_request
+  after insert on project_collaborators
+  for each row execute function public.notify_new_join_request();
+
+-- Join request approved/denied -> notify the requester.
+create or replace function public.notify_join_request_resolved()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.status in ('approved','denied') and old.status is distinct from new.status then
+    insert into notifications (user_id, type, title, body, link)
+    select new.user_id,
+      case when new.status = 'approved' then 'join_approved' else 'join_denied' end,
+      case when new.status = 'approved' then 'You''re in: ' || p.title else 'Request declined: ' || p.title end,
+      case when new.status = 'approved' then 'Your request to join was approved.' else 'Your request to join was declined.' end,
+      'project.html?id=' || p.id
+    from projects p
+    where p.id = new.project_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_join_request_resolved on project_collaborators;
+create trigger trg_notify_join_request_resolved
+  after update on project_collaborators
+  for each row execute function public.notify_join_request_resolved();
+
+-- New chat message -> notify other team members (not the sender).
+create or replace function public.notify_new_chat_message()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into notifications (user_id, type, title, body, link)
+  select member_id, 'chat_message',
+    new.user_name || ' in ' || p.title,
+    left(new.body, 140),
+    'chat.html?id=' || new.project_id
+  from projects p
+  cross join lateral (
+    select p.owner_id as member_id
+    union
+    select pc.user_id from project_collaborators pc
+    where pc.project_id = new.project_id and pc.status = 'approved'
+  ) members
+  where p.id = new.project_id and member_id <> new.user_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_new_chat_message on project_chat_messages;
+create trigger trg_notify_new_chat_message
+  after insert on project_chat_messages
+  for each row execute function public.notify_new_chat_message();
+
+-- Task assigned -> notify the assignee.
+create or replace function public.notify_task_assigned()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into notifications (user_id, type, title, body, link)
+  select new.user_id, 'task_assigned',
+    'Assigned: ' || t.title,
+    'You were assigned to a task on ' || p.title || '.',
+    'task.html?id=' || t.id
+  from project_tasks t
+  join projects p on p.id = t.project_id
+  where t.id = new.task_id and new.user_id <> auth.uid();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_task_assigned on task_assignees;
+create trigger trg_notify_task_assigned
+  after insert on task_assignees
+  for each row execute function public.notify_task_assigned();

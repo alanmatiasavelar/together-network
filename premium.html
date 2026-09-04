@@ -24,6 +24,7 @@
     <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
     <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
     <div class="nav-auth" id="navAuth"></div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -72,11 +73,13 @@ function renderNav(user){
       <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
       <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
     `;
+    initNotifications(user);
   } else {
     navAuth.innerHTML = `
       <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
       <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
     `;
+    teardownNotifications();
   }
 }
 

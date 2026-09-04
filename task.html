@@ -27,6 +27,7 @@
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
     </div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -82,11 +83,13 @@ function renderNav(){
       <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
       <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
     `;
+    initNotifications(currentUser);
   } else {
     navAuth.innerHTML = `
       <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
       <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
     `;
+    teardownNotifications();
   }
 }
 

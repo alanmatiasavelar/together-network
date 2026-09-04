@@ -27,6 +27,7 @@
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
     </div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -100,11 +101,13 @@ function renderNav(){
       <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
       <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
     `;
+    initNotifications(currentUser);
   } else {
     navAuth.innerHTML = `
       <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
       <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
     `;
+    teardownNotifications();
   }
 }
 
@@ -235,6 +238,11 @@ function render(){
             ` : ''}
           </label>
           <label>${t('learnmore.post_video')}<input type="url" name="youtube_link" value="${editingPost ? escapeHTML(editingPost.youtube_link || '') : ''}" placeholder="https://youtube.com/watch?v=..."></label>
+          <label style="display:flex;align-items:center;gap:8px;font-weight:400;">
+            <input type="checkbox" name="show_on_main_feed" style="width:auto;" ${editingPost && editingPost.show_on_main_feed ? 'checked' : ''}>
+            ${t('learnmore.show_on_feed_label')}
+          </label>
+          <p class="credits-note" style="margin-top:-8px;">${t('learnmore.show_on_feed_hint')}</p>
           <button class="btn btn-primary btn-small" type="submit">${editingPostId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="postMsg"></p>
         </form>
@@ -252,6 +260,7 @@ function render(){
           ${post.image_url ? `<img src="${escapeHTML(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
           ${post.youtube_link ? youtubeEmbedHTML(post.youtube_link) : ''}
           <div class="post-card-body">
+            ${post.show_on_main_feed ? `<span class="chip">${t('learnmore.on_main_feed')}</span>` : ''}
             ${post.text ? `<p class="post-text">${escapeHTML(post.text)}</p>` : ''}
             <span class="post-date">${escapeHTML((post.created_at || '').slice(0,10))}</span>
             ${isOwner ? `
@@ -315,7 +324,8 @@ function wireEvents(){
       return;
     }
 
-    const payload = { text: text || null, image_url: imageUrl, youtube_link: ytLink || null };
+    const showOnMainFeed = fd.get('show_on_main_feed') === 'on';
+    const payload = { text: text || null, image_url: imageUrl, youtube_link: ytLink || null, show_on_main_feed: showOnMainFeed };
     let error;
     if (editingId){
       ({ error } = await supabaseClient.from('project_posts').update(payload).eq('id', editingId));

@@ -32,6 +32,7 @@
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
     </div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -266,6 +267,7 @@
           <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
           <a class="btn btn-primary" href="feed.html">${t('nav.go_to_feed')}</a>
         `;
+        initNotifications(session.user);
       }
     }).catch(() => {});
   }

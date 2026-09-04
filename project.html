@@ -27,6 +27,7 @@
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
     </div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -83,11 +84,13 @@ function renderNav(){
       <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
       <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
     `;
+    initNotifications(currentUser);
   } else {
     navAuth.innerHTML = `
       <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
       <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
     `;
+    teardownNotifications();
   }
 }
 
@@ -176,6 +179,14 @@ function render(){
       <h1>${escapeHTML(project.title)}</h1>
       <p class="project-desc">${escapeHTML(project.description || project.pitch)}</p>
       <p style="margin-top:10px;font-size:13.5px;color:var(--ink-soft);">${t('project.manager')} ${escapeHTML(project.owner_name)}</p>
+      <div class="project-meta">
+        <span class="stage-badge stage-${project.stage}">${t('project.stage_' + project.stage)}</span>
+        ${isOwner ? `
+          <select id="stageSelect" class="stage-select">
+            ${['create','recruit','work','track','finish'].map(s => `<option value="${s}" ${project.stage === s ? 'selected' : ''}>${t('project.stage_' + s)}</option>`).join('')}
+          </select>
+        ` : ''}
+      </div>
     </div>
   `;
   html += `</div>`;
@@ -703,6 +714,13 @@ function wireEvents(){
     await supabaseClient.from('project_collaborators').update({ status: 'denied' }).eq('id', btn.dataset.deny);
     loadProject();
   }));
+
+  const stageSelect = document.getElementById('stageSelect');
+  if (stageSelect) stageSelect.addEventListener('change', async () => {
+    stageSelect.disabled = true;
+    await supabaseClient.from('projects').update({ stage: stageSelect.value }).eq('id', projectId);
+    loadProject();
+  });
 
   const mediaForm = document.getElementById('mediaForm');
   if (mediaForm) mediaForm.addEventListener('submit', async (e) => {

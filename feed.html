@@ -27,6 +27,7 @@
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
     </div>
+    <span id="notifSlot"></span>
     <span id="langSlot"></span>
   </div>
 </header>
@@ -49,6 +50,8 @@
         <a href="signup.html" data-i18n="feed.guest_banner_signup">sign up free</a>
         <span data-i18n="feed.guest_banner_2">to support a project or start your own.</span>
       </p>
+
+      <div id="updatesSection"></div>
 
       <div id="newProjectSection">
       <details class="new-project">
@@ -85,6 +88,12 @@
       </div>
 
       <div class="filter-bar">
+        <input type="search" id="searchQuery" data-i18n-placeholder="feed.search_placeholder" placeholder="Search projects…" style="flex:1;min-width:180px;font-size:14px;padding:8px 14px;border-radius:100px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);">
+        <select id="sortBy">
+          <option value="newest" data-i18n="feed.sort.newest">Newest</option>
+          <option value="collab" data-i18n="feed.sort.most_collab">Most collaborators</option>
+          <option value="funded" data-i18n="feed.sort.most_funded">Most funded</option>
+        </select>
         <select id="filterCategory">
           <option value="all" data-i18n="feed.filter.all_categories">All categories</option>
           <option value="community" data-i18n="feed.cat.community">Community</option>
@@ -155,6 +164,7 @@ applyStaticTranslations();
 function onLangChange(){
   renderNav();
   renderFilteredFeed();
+  loadUpdates();
 }
 
 let currentUser = null;
@@ -171,12 +181,14 @@ function renderNav(){
     `;
     document.getElementById('navLogout').addEventListener('click', handleLogout);
     banner.hidden = true;
+    initNotifications(currentUser);
   } else {
     nav.innerHTML = `
       <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
       <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
     `;
     if (supabaseClient) banner.hidden = false;
+    teardownNotifications();
   }
 }
 
@@ -266,21 +278,79 @@ async function loadFeed(){
   renderFilteredFeed();
 }
 
+function projectCredits(p){
+  return (p.project_supporters || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+}
+function projectCollabCount(p){
+  return (p.project_collaborators || []).filter(c => c.status === 'approved').length;
+}
+
 function renderFilteredFeed(){
   const grid = document.getElementById('feedGrid');
   if (!supabaseClient) return;
   const category = document.getElementById('filterCategory')?.value || 'all';
   const type = document.getElementById('filterType')?.value || 'all';
+  const sort = document.getElementById('sortBy')?.value || 'newest';
+  const query = (document.getElementById('searchQuery')?.value || '').trim().toLowerCase();
 
   let filtered = allProjects;
   if (category !== 'all') filtered = filtered.filter(p => p.category === category);
   if (type !== 'all') filtered = filtered.filter(p => p.goal_type === type);
+  if (query){
+    filtered = filtered.filter(p =>
+      (p.title || '').toLowerCase().includes(query) ||
+      (p.pitch || '').toLowerCase().includes(query) ||
+      (p.description || '').toLowerCase().includes(query)
+    );
+  }
+
+  filtered = filtered.slice();
+  if (sort === 'collab') filtered.sort((a, b) => projectCollabCount(b) - projectCollabCount(a));
+  else if (sort === 'funded') filtered.sort((a, b) => projectCredits(b) - projectCredits(a));
+  else filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   if (filtered.length === 0){
     grid.innerHTML = `<p class="feed-empty">${allProjects.length === 0 ? t('feed.empty_none') : t('feed.empty_filtered')}</p>`;
     return;
   }
   grid.innerHTML = filtered.map(p => cardHTML(p, { example: false })).join('');
+}
+
+function updateCardHTML(post){
+  const proj = post.projects;
+  if (!proj) return '';
+  let mediaBlock = '';
+  if (post.image_url) mediaBlock += `<img src="${escapeHTML(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">`;
+  else if (post.youtube_link) mediaBlock += youtubeEmbedHTML(post.youtube_link);
+  return `
+    <article class="post-card">
+      ${mediaBlock}
+      <div class="post-card-body">
+        <span class="post-date">${escapeHTML(proj.title)} · ${escapeHTML((post.created_at || '').slice(0,10))}</span>
+        ${post.text ? `<p class="post-text">${escapeHTML(post.text)}</p>` : ''}
+        <a class="view-project-link" href="learn-more.html?id=${proj.id}">${t('feed.updates_view')}</a>
+      </div>
+    </article>
+  `;
+}
+
+async function loadUpdates(){
+  const section = document.getElementById('updatesSection');
+  if (!supabaseClient) return;
+  const { data, error } = await supabaseClient
+    .from('project_posts')
+    .select('*, projects(id, title)')
+    .eq('show_on_main_feed', true)
+    .order('created_at', { ascending: false })
+    .limit(9);
+  if (error || !data || data.length === 0){ section.innerHTML = ''; return; }
+  section.innerHTML = `
+    <div class="section-head" style="margin-bottom:20px;">
+      <p class="eyebrow">${t('feed.updates_eyebrow')}</p>
+      <h2 style="font-size:22px;margin-top:8px;">${t('feed.updates_heading')}</h2>
+    </div>
+    <div class="post-grid" style="margin-bottom:40px;">${data.map(updateCardHTML).join('')}</div>
+  `;
 }
 
 document.getElementById('projectForm').addEventListener('submit', async (e) => {
@@ -341,6 +411,12 @@ async function checkProjectLimit(){
 async function init(){
   document.getElementById('filterCategory').addEventListener('change', renderFilteredFeed);
   document.getElementById('filterType').addEventListener('change', renderFilteredFeed);
+  document.getElementById('sortBy').addEventListener('change', renderFilteredFeed);
+  let searchDebounce;
+  document.getElementById('searchQuery').addEventListener('input', () => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(renderFilteredFeed, 200);
+  });
 
   if (supabaseClient){
     const { data: { session } } = await supabaseClient.auth.getSession();
@@ -354,6 +430,7 @@ async function init(){
   }
   renderNav();
   loadFeed();
+  loadUpdates();
   checkProjectLimit();
 
   const els = document.querySelectorAll('.reveal');
