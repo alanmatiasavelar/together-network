@@ -186,7 +186,52 @@ function render(){
   }
   html += `</div>`;
 
+  html += `
+    <div class="section-block">
+      <details class="add-inline">
+        <summary>${t('dashboard.change_password')}</summary>
+        <form id="changePasswordForm" class="auth-form">
+          <label><span data-i18n="resetpw.new_password">${t('resetpw.new_password')}</span><input type="password" required name="password" minlength="6" autocomplete="new-password"></label>
+          <label><span data-i18n="resetpw.confirm_password">${t('resetpw.confirm_password')}</span><input type="password" required name="confirm" minlength="6" autocomplete="new-password"></label>
+          <button class="btn btn-ghost btn-small" type="submit">${t('dashboard.change_password_cta')}</button>
+          <p class="form-msg" id="changePasswordMsg"></p>
+        </form>
+      </details>
+    </div>
+  `;
+
   content.innerHTML = html;
+  wireAccountForm();
+}
+
+function wireAccountForm(){
+  const form = document.getElementById('changePasswordForm');
+  if (!form) return;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('changePasswordMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const password = fd.get('password');
+    const confirm = fd.get('confirm');
+    if (password !== confirm){
+      msg.textContent = t('resetpw.err_mismatch');
+      msg.className = 'form-msg error';
+      return;
+    }
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    submitBtn.disabled = false;
+    if (error){
+      msg.textContent = error.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    msg.textContent = t('dashboard.change_password_success');
+    msg.className = 'form-msg ok';
+    e.target.reset();
+  });
 }
 
 async function init(){
