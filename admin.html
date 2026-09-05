@@ -70,6 +70,7 @@ let currentUser = null;
 let isAdmin = false;
 let pending = [];
 let approved = [];
+let flagged = [];
 let loaded = false;
 
 function renderNav(){
@@ -108,12 +109,20 @@ function renderNotAuthorized(){
 }
 
 async function loadAdmin(){
-  const [{ data: pendingRows }, { data: approvedRows }] = await Promise.all([
+  const [{ data: pendingRows }, { data: approvedRows }, { data: flaggedPosts }, { data: flaggedFeedPosts }, { data: flaggedChat }] = await Promise.all([
     supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('premium_status', 'pending').order('created_at', { ascending: true }),
-    supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('is_premium', true).order('created_at', { ascending: true })
+    supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('is_premium', true).order('created_at', { ascending: true }),
+    supabaseClient.from('project_posts').select('id, text, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false }),
+    supabaseClient.from('project_feed_posts').select('id, text, user_name, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false }),
+    supabaseClient.from('project_chat_messages').select('id, body, user_name, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false })
   ]);
   pending = pendingRows || [];
   approved = approvedRows || [];
+  flagged = [
+    ...(flaggedPosts || []).map(r => ({ table: 'project_posts', id: r.id, text: r.text, author: null, categories: r.flag_categories, created_at: r.created_at, project: r.projects?.title, typeLabel: t('admin.type_post') })),
+    ...(flaggedFeedPosts || []).map(r => ({ table: 'project_feed_posts', id: r.id, text: r.text, author: r.user_name, categories: r.flag_categories, created_at: r.created_at, project: r.projects?.title, typeLabel: t('admin.type_feed_post') })),
+    ...(flaggedChat || []).map(r => ({ table: 'project_chat_messages', id: r.id, text: r.body, author: r.user_name, categories: r.flag_categories, created_at: r.created_at, project: r.projects?.title, typeLabel: t('admin.type_chat') }))
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   loaded = true;
   render();
 }
@@ -156,6 +165,32 @@ function render(){
   }
   html += `</div>`;
 
+  html += `<div class="section-block"><h2>${t('admin.flagged_heading')}</h2>`;
+  if (flagged.length === 0){
+    html += `<p class="credits-note">${t('admin.no_flagged')}</p>`;
+  } else {
+    flagged.forEach(f => {
+      html += `
+        <div class="notify-row" style="align-items:flex-start;">
+          <div>
+            <div class="card-row" style="margin-bottom:4px;">
+              <span class="chip">${escapeHTML(f.typeLabel)}</span>
+              ${f.project ? `<span class="chip">${escapeHTML(f.project)}</span>` : ''}
+              ${f.author ? `<span class="chip">${escapeHTML(f.author)}</span>` : ''}
+            </div>
+            <p style="font-size:14px;max-width:60ch;">${escapeHTML(f.text || '')}</p>
+            ${f.categories ? `<p class="credits-note">${t('admin.flagged_for')} ${escapeHTML(f.categories)}</p>` : ''}
+          </div>
+          <div class="notify-actions">
+            <button class="btn btn-ghost btn-small" data-clear-flag="${f.table}:${f.id}">${t('admin.clear_flag')}</button>
+            <button class="icon-btn" data-delete-flagged="${f.table}:${f.id}">${t('common.delete')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
   content.innerHTML = html;
   wireEvents();
 }
@@ -174,6 +209,18 @@ function wireEvents(){
   content.querySelectorAll('[data-revoke-premium]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm(t('admin.revoke_confirm'))) return;
     await supabaseClient.from('profiles').update({ is_premium: false, premium_status: 'denied' }).eq('id', btn.dataset.revokePremium);
+    loadAdmin();
+  }));
+  content.querySelectorAll('[data-clear-flag]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const [table, id] = btn.dataset.clearFlag.split(':');
+    await supabaseClient.from(table).update({ flagged: false, flag_categories: null }).eq('id', id);
+    loadAdmin();
+  }));
+  content.querySelectorAll('[data-delete-flagged]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm(t('admin.delete_confirm'))) return;
+    const [table, id] = btn.dataset.deleteFlagged.split(':');
+    await supabaseClient.from(table).delete().eq('id', id);
     loadAdmin();
   }));
 }

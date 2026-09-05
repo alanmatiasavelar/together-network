@@ -1154,18 +1154,19 @@ function wireEvents(){
       return;
     }
 
-    let error;
+    let error, data;
     if (editingId){
       ({ error } = await supabaseClient.from('project_feed_posts').update({ text: text || null, image_url: imageUrl, youtube_link: ytLink || null }).eq('id', editingId));
     } else {
       const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
-      ({ error } = await supabaseClient.from('project_feed_posts').insert({
+      ({ data, error } = await supabaseClient.from('project_feed_posts').insert({
         project_id: projectId, user_id: currentUser.id, user_name: userName,
         text: text || null, image_url: imageUrl, youtube_link: ytLink || null
-      }));
+      }).select().single());
     }
     submitBtn.disabled = false;
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    if (data?.flagged) alert(t('moderation.flagged_notice'));
     editingFeedPostId = null;
     loadProject();
   });

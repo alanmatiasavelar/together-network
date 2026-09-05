@@ -351,14 +351,15 @@ function wireEvents(){
 
     const showOnMainFeed = fd.get('show_on_main_feed') === 'on';
     const payload = { text: text || null, image_url: imageUrl, youtube_link: ytLink || null, show_on_main_feed: showOnMainFeed };
-    let error;
+    let error, data;
     if (editingId){
       ({ error } = await supabaseClient.from('project_posts').update(payload).eq('id', editingId));
     } else {
-      ({ error } = await supabaseClient.from('project_posts').insert({ project_id: projectId, ...payload }));
+      ({ data, error } = await supabaseClient.from('project_posts').insert({ project_id: projectId, ...payload }).select().single());
     }
     submitBtn.disabled = false;
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    if (data?.flagged) alert(t('moderation.flagged_notice'));
     editingPostId = null;
     loadProject();
 

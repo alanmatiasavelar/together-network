@@ -208,9 +208,9 @@ function wireEvents(){
     const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
     textarea.disabled = true;
     sendBtn.disabled = true;
-    const { error } = await supabaseClient.from('project_chat_messages').insert({
+    const { data: inserted, error } = await supabaseClient.from('project_chat_messages').insert({
       project_id: projectId, user_id: currentUser.id, user_name: userName, body
-    });
+    }).select().single();
     textarea.disabled = false;
     if (error){
       msg.textContent = t('chat.err_generic');
@@ -219,7 +219,12 @@ function wireEvents(){
       textarea.focus();
       return;
     }
-    msg.textContent = '';
+    if (inserted?.flagged){
+      msg.textContent = t('moderation.flagged_notice');
+      msg.className = 'form-msg error';
+    } else {
+      msg.textContent = '';
+    }
     e.target.reset();
     autoGrowTextarea(textarea);
     textarea.focus();
