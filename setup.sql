@@ -1539,7 +1539,12 @@ declare
   resp extensions.http_response;
   result jsonb;
 begin
-  content := case TG_TABLE_NAME when 'project_chat_messages' then NEW.body else NEW.text end;
+  -- Use to_jsonb(NEW)->>'field' instead of NEW.body / NEW.text directly:
+  -- this function is shared by 3 tables (only one of which has a "body"
+  -- column), and PL/pgSQL requires every field referenced in an expression
+  -- to exist on the row even in a CASE branch that isn't taken. jsonb key
+  -- lookup just returns null for a missing key instead of erroring.
+  content := coalesce(to_jsonb(NEW) ->> 'body', to_jsonb(NEW) ->> 'text');
 
   if content is null or length(trim(content)) = 0 then
     NEW.flagged := false;
