@@ -75,6 +75,7 @@ let editingTaskId = null;
 let editingEventId = null;
 let editingFeedPostId = null;
 let editingCostId = null;
+let editingActivityId = null;
 
 function renderNav(){
   if (currentUser){
@@ -128,7 +129,9 @@ async function loadProject(){
       project_feed_posts(*),
       project_polls(*, poll_votes(user_id, option_index)),
       project_events(*, event_rsvps(user_id, status)),
-      project_costs(*)`)
+      project_costs(*),
+      project_activities(*),
+      project_activity_links(*)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -236,6 +239,7 @@ function render(){
       <button data-tab="polls" class="${activeTab === 'polls' ? 'active' : ''}">${t('project.tab_polls')}</button>
       <button data-tab="events" class="${activeTab === 'events' ? 'active' : ''}">${t('project.tab_events')}</button>
       <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
+      <button data-tab="schedule" class="${activeTab === 'schedule' ? 'active' : ''}">${t('project.tab_schedule')}</button>
       <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
@@ -245,6 +249,7 @@ function render(){
     <div class="tab-panel" data-panel="polls" ${activeTab !== 'polls' ? 'hidden' : ''}>${renderPollsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="events" ${activeTab !== 'events' ? 'hidden' : ''}>${renderEventsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="costs" ${activeTab !== 'costs' ? 'hidden' : ''}>${renderCostsPanel()}</div>
+    <div class="tab-panel" data-panel="schedule" ${activeTab !== 'schedule' ? 'hidden' : ''}>${renderSchedulePanel()}</div>
   `;
 
   // --- Coordination ---
@@ -526,6 +531,219 @@ function renderCostsPanel(){
     `;
   }
   return html;
+}
+
+function ganttParseDate(s){
+  const [y, m, d] = s.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+function ganttFmtDate(ms){
+  return new Date(ms).toISOString().slice(0, 10);
+}
+const GANTT_DAY_MS = 86400000;
+
+function renderGanttChart(activities, links){
+  if (activities.length === 0) return `<p class="credits-note">${t('project.no_activities')}</p>`;
+
+  let minDate = ganttParseDate(activities[0].start_date);
+  let maxDate = ganttParseDate(activities[0].end_date);
+  activities.forEach(a => {
+    minDate = Math.min(minDate, ganttParseDate(a.start_date));
+    maxDate = Math.max(maxDate, ganttParseDate(a.end_date));
+  });
+  minDate -= GANTT_DAY_MS;
+  maxDate += GANTT_DAY_MS;
+  const totalDays = Math.round((maxDate - minDate) / GANTT_DAY_MS) + 1;
+
+  const dayWidth = totalDays > 60 ? 18 : totalDays > 30 ? 24 : 32;
+  const rowHeight = 42;
+  const chartWidth = totalDays * dayWidth;
+  const chartHeight = activities.length * rowHeight;
+  const labelStep = totalDays > 90 ? 30 : totalDays > 30 ? 7 : 1;
+
+  let ticksHtml = '';
+  for (let i = 0; i < totalDays; i += labelStep){
+    const label = new Date(minDate + i * GANTT_DAY_MS).toLocaleDateString(currentLang, { month: 'short', day: 'numeric' });
+    ticksHtml += `<div class="gantt-tick" style="left:${i * dayWidth}px;">${escapeHTML(label)}</div>`;
+  }
+
+  const rowCenterY = {};
+  let barsHtml = '';
+  activities.forEach((a, idx) => {
+    const start = ganttParseDate(a.start_date), end = ganttParseDate(a.end_date);
+    const left = Math.round((start - minDate) / GANTT_DAY_MS) * dayWidth;
+    const width = (Math.round((end - start) / GANTT_DAY_MS) + 1) * dayWidth;
+    const top = idx * rowHeight;
+    rowCenterY[a.id] = top + rowHeight / 2;
+    barsHtml += `<div class="gantt-row" style="top:${top}px;width:${chartWidth}px;"></div>`;
+    barsHtml += `
+      <div class="gantt-bar" style="left:${left}px;top:${top + 7}px;width:${Math.max(width - 4, 12)}px;height:${rowHeight - 14}px;" title="${escapeHTML(a.title)}: ${escapeHTML(a.start_date)} → ${escapeHTML(a.end_date)}">
+        <span class="gantt-bar-label">${escapeHTML(a.title)}</span>
+      </div>
+    `;
+  });
+
+  let connectorsHtml = '';
+  links.forEach(l => {
+    const pred = activities.find(a => a.id === l.predecessor_id);
+    const succ = activities.find(a => a.id === l.successor_id);
+    if (!pred || !succ) return;
+    const predStart = ganttParseDate(pred.start_date), predEnd = ganttParseDate(pred.end_date);
+    const succStart = ganttParseDate(succ.start_date), succEnd = ganttParseDate(succ.end_date);
+    let x1, x2;
+    if (l.link_type === 'SS'){
+      x1 = Math.round((predStart - minDate) / GANTT_DAY_MS) * dayWidth;
+      x2 = Math.round((succStart - minDate) / GANTT_DAY_MS) * dayWidth;
+    } else if (l.link_type === 'FF'){
+      x1 = (Math.round((predEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
+      x2 = (Math.round((succEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
+    } else { // FS
+      x1 = (Math.round((predEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
+      x2 = Math.round((succStart - minDate) / GANTT_DAY_MS) * dayWidth;
+    }
+    const y1 = rowCenterY[pred.id], y2 = rowCenterY[succ.id];
+    const midX = x2 >= x1 ? x1 + 14 : x1 - 14;
+    connectorsHtml += `<path d="M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}" class="gantt-link" marker-end="url(#ganttArrow)"/>`;
+  });
+
+  return `
+    <div class="gantt-scroll">
+      <div class="gantt-header" style="width:${chartWidth}px;">${ticksHtml}</div>
+      <div class="gantt-body" style="width:${chartWidth}px;height:${chartHeight}px;">
+        ${barsHtml}
+        <svg class="gantt-svg" width="${chartWidth}" height="${chartHeight}">
+          <defs>
+            <marker id="ganttArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#8a97a3"/>
+            </marker>
+          </defs>
+          ${connectorsHtml}
+        </svg>
+      </div>
+    </div>
+  `;
+}
+
+function renderSchedulePanel(){
+  const activities = (project.project_activities || []).slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  const links = project.project_activity_links || [];
+
+  let html = `<div id="ganttWrap">${renderGanttChart(activities, links)}</div>`;
+
+  html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.activities_heading')}</h3>`;
+  if (activities.length === 0) html += `<p class="credits-note">${t('project.no_activities')}</p>`;
+  activities.forEach(a => {
+    html += `
+      <div class="cost-row">
+        <div>
+          <div class="cost-desc">${escapeHTML(a.title)}</div>
+          <div class="cost-meta">${escapeHTML(a.start_date)} → ${escapeHTML(a.end_date)} · ${t('project.created_by')} ${escapeHTML(a.created_by_name)}</div>
+        </div>
+        <div class="item-actions">
+          <button class="icon-btn" data-edit-activity="${a.id}">${t('common.edit')}</button>
+          <button class="icon-btn" data-delete-activity="${a.id}">${t('common.delete')}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  if (currentUser){
+    const editingActivity = editingActivityId ? activities.find(a => a.id === editingActivityId) : null;
+    html += `
+      <details class="add-inline" ${editingActivityId ? 'open' : ''} style="margin-top:14px;">
+        <summary>${editingActivityId ? t('common.edit') : t('project.add_activity')}</summary>
+        <form id="activityForm" class="auth-form" data-editing="${editingActivityId || ''}">
+          <label>${t('project.activity_title')}<input type="text" required name="title" maxlength="140" value="${editingActivity ? escapeHTML(editingActivity.title) : ''}"></label>
+          <label>${t('project.activity_start')}<input type="date" required name="start_date" value="${editingActivity ? editingActivity.start_date : ''}"></label>
+          <label>${t('project.activity_end')}<input type="date" required name="end_date" value="${editingActivity ? editingActivity.end_date : ''}"></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingActivityId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="activityMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  html += `</div>`;
+
+  html += `<div class="section-block"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.links_heading')}</h3>`;
+  html += `<p class="credits-note" style="margin-bottom:10px;">${t('project.links_hint')}</p>`;
+  if (links.length === 0){
+    html += `<p class="credits-note">${t('project.no_links')}</p>`;
+  } else {
+    links.forEach(l => {
+      const pred = activities.find(a => a.id === l.predecessor_id);
+      const succ = activities.find(a => a.id === l.successor_id);
+      html += `
+        <div class="cost-row">
+          <div class="cost-desc">${escapeHTML(pred?.title || '?')} <span class="chip">${t('project.link_' + l.link_type.toLowerCase())}</span> ${escapeHTML(succ?.title || '?')}</div>
+          <button class="icon-btn" data-delete-link="${l.id}">${t('common.delete')}</button>
+        </div>
+      `;
+    });
+  }
+
+  if (currentUser && activities.length >= 2){
+    const options = activities.map(a => `<option value="${a.id}">${escapeHTML(a.title)}</option>`).join('');
+    html += `
+      <details class="add-inline" style="margin-top:14px;">
+        <summary>${t('project.add_link')}</summary>
+        <form id="linkForm" class="auth-form">
+          <label>${t('project.link_predecessor')}<select name="predecessor_id" required>${options}</select></label>
+          <label>${t('project.link_type')}
+            <select name="link_type">
+              <option value="FS">${t('project.link_fs')}</option>
+              <option value="SS">${t('project.link_ss')}</option>
+              <option value="FF">${t('project.link_ff')}</option>
+            </select>
+          </label>
+          <label>${t('project.link_successor')}<select name="successor_id" required>${options}</select></label>
+          <button class="btn btn-ghost btn-small" type="submit">${t('common.add')}</button>
+          <p class="form-msg" id="linkMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  html += `</div>`;
+
+  return html;
+}
+
+async function recalcAndSaveSchedule(){
+  const [{ data: activities }, { data: links }] = await Promise.all([
+    supabaseClient.from('project_activities').select('*').eq('project_id', projectId),
+    supabaseClient.from('project_activity_links').select('*').eq('project_id', projectId)
+  ]);
+  if (!activities || !links || links.length === 0) return;
+
+  const byId = new Map(activities.map(a => [a.id, { start: ganttParseDate(a.start_date), end: ganttParseDate(a.end_date) }]));
+  let changed = true, iterations = 0;
+  while (changed && iterations < 100){
+    changed = false;
+    iterations++;
+    for (const link of links){
+      const pred = byId.get(link.predecessor_id);
+      const succ = byId.get(link.successor_id);
+      if (!pred || !succ) continue;
+      const duration = succ.end - succ.start;
+      if (link.link_type === 'FS' && succ.start < pred.end){
+        succ.start = pred.end; succ.end = succ.start + duration; changed = true;
+      } else if (link.link_type === 'SS' && succ.start < pred.start){
+        succ.start = pred.start; succ.end = succ.start + duration; changed = true;
+      } else if (link.link_type === 'FF' && succ.end < pred.end){
+        succ.end = pred.end; succ.start = succ.end - duration; changed = true;
+      }
+    }
+  }
+
+  const updates = activities
+    .map(a => ({ id: a.id, computed: byId.get(a.id), original: a }))
+    .filter(({ computed, original }) => ganttFmtDate(computed.start) !== original.start_date || ganttFmtDate(computed.end) !== original.end_date);
+
+  for (const u of updates){
+    await supabaseClient.from('project_activities').update({
+      start_date: ganttFmtDate(u.computed.start),
+      end_date: ganttFmtDate(u.computed.end)
+    }).eq('id', u.id);
+  }
 }
 
 function renderGoalsPanel(isOwner){
@@ -1030,6 +1248,59 @@ function wireEvents(){
   }));
   content.querySelectorAll('[data-delete-cost]').forEach(btn => btn.addEventListener('click', async () => {
     await supabaseClient.from('project_costs').delete().eq('id', btn.dataset.deleteCost);
+    loadProject();
+  }));
+
+  const activityForm = document.getElementById('activityForm');
+  if (activityForm) activityForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('activityMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const title = (fd.get('title') || '').trim();
+    const startDate = fd.get('start_date');
+    const endDate = fd.get('end_date');
+    if (endDate < startDate){ msg.textContent = t('project.activity_date_err'); msg.className = 'form-msg error'; return; }
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_activities').update({ title, start_date: startDate, end_date: endDate }).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_activities').insert({ project_id: projectId, title, start_date: startDate, end_date: endDate }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingActivityId = null;
+    await recalcAndSaveSchedule();
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-activity]').forEach(btn => btn.addEventListener('click', () => {
+    editingActivityId = btn.dataset.editActivity;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-activity]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_activities').delete().eq('id', btn.dataset.deleteActivity);
+    loadProject();
+  }));
+
+  const linkForm = document.getElementById('linkForm');
+  if (linkForm) linkForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('linkMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const predecessorId = fd.get('predecessor_id');
+    const successorId = fd.get('successor_id');
+    const linkType = fd.get('link_type');
+    if (predecessorId === successorId){ msg.textContent = t('project.link_same_err'); msg.className = 'form-msg error'; return; }
+    const { error } = await supabaseClient.from('project_activity_links').insert({
+      project_id: projectId, predecessor_id: predecessorId, successor_id: successorId, link_type: linkType
+    });
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    await recalcAndSaveSchedule();
+    loadProject();
+  });
+  content.querySelectorAll('[data-delete-link]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_activity_links').delete().eq('id', btn.dataset.deleteLink);
     loadProject();
   }));
 

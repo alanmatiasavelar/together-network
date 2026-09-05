@@ -1275,3 +1275,131 @@ drop trigger if exists trg_notify_task_assigned on task_assignees;
 create trigger trg_notify_task_assigned
   after insert on task_assignees
   for each row execute function public.notify_task_assigned();
+
+-- ---------------------------------------------------------------------------
+-- MANAGER CONFIRMATION FOR SUPPORT AMOUNTS: a self-reported amount only
+-- counts toward the project's total once the manager confirms it.
+-- ---------------------------------------------------------------------------
+alter table project_supporters add column if not exists confirmed boolean not null default false;
+
+drop policy if exists "Users can update their own support record" on project_supporters;
+create policy "Users can update their own support record" on project_supporters
+  for update using (auth.uid() = user_id or public.is_project_owner(project_id));
+
+-- New/changed pending amount -> notify the project owner.
+create or replace function public.notify_new_supporter_amount()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.amount is not null and new.confirmed = false
+     and (tg_op = 'INSERT' or old.amount is distinct from new.amount or old.confirmed is distinct from new.confirmed) then
+    insert into notifications (user_id, type, title, body, link)
+    select p.owner_id, 'support_pending',
+      'Support to confirm: ' || p.title,
+      coalesce(pr.display_name, 'Someone') || ' reported $' || new.amount::text || ' — needs your confirmation.',
+      'learn-more.html?id=' || p.id
+    from projects p
+    left join profiles pr on pr.id = new.user_id
+    where p.id = new.project_id and p.owner_id <> new.user_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_new_supporter_amount on project_supporters;
+create trigger trg_notify_new_supporter_amount
+  after insert or update on project_supporters
+  for each row execute function public.notify_new_supporter_amount();
+
+-- Confirmed -> notify the supporter.
+create or replace function public.notify_supporter_confirmed()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.confirmed = true and old.confirmed = false then
+    insert into notifications (user_id, type, title, body, link)
+    select new.user_id, 'support_confirmed',
+      'Confirmed: ' || p.title,
+      'Your $' || new.amount::text || ' contribution was confirmed by the manager.',
+      'learn-more.html?id=' || p.id
+    from projects p
+    where p.id = new.project_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_supporter_confirmed on project_supporters;
+create trigger trg_notify_supporter_confirmed
+  after update on project_supporters
+  for each row execute function public.notify_supporter_confirmed();
+
+-- ---------------------------------------------------------------------------
+-- SCHEDULE / GANTT: activities with start/end dates, linked to each other as
+-- Finish-to-Start, Start-to-Start, or Finish-to-Finish. Any team member can
+-- manage this, same openness as the kanban tasks.
+-- ---------------------------------------------------------------------------
+create table if not exists project_activities (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  start_date date not null,
+  end_date date not null,
+  created_by uuid not null default auth.uid(),
+  created_by_name text not null default public.current_display_name(),
+  created_at timestamptz not null default now(),
+  constraint project_activities_dates_check check (end_date >= start_date)
+);
+
+create index if not exists project_activities_project_id_idx on project_activities (project_id);
+
+alter table project_activities enable row level security;
+
+drop policy if exists "Team can read activities" on project_activities;
+create policy "Team can read activities" on project_activities
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add activities" on project_activities;
+create policy "Team can add activities" on project_activities
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update activities" on project_activities;
+create policy "Team can update activities" on project_activities
+  for update using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete activities" on project_activities;
+create policy "Team can delete activities" on project_activities
+  for delete using (public.is_project_team_member(project_id));
+
+create table if not exists project_activity_links (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  predecessor_id uuid not null references project_activities(id) on delete cascade,
+  successor_id uuid not null references project_activities(id) on delete cascade,
+  link_type text not null check (link_type in ('FS','SS','FF')),
+  created_at timestamptz not null default now(),
+  constraint project_activity_links_no_self check (predecessor_id <> successor_id),
+  unique (predecessor_id, successor_id, link_type)
+);
+
+create index if not exists project_activity_links_project_id_idx on project_activity_links (project_id);
+
+alter table project_activity_links enable row level security;
+
+drop policy if exists "Team can read activity links" on project_activity_links;
+create policy "Team can read activity links" on project_activity_links
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add activity links" on project_activity_links;
+create policy "Team can add activity links" on project_activity_links
+  for insert with check (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete activity links" on project_activity_links;
+create policy "Team can delete activity links" on project_activity_links
+  for delete using (public.is_project_team_member(project_id));

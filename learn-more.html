@@ -122,7 +122,7 @@ async function loadProject(){
   }
   const { data, error } = await supabaseClient
     .from('projects')
-    .select('*, project_posts(*), project_supporters(user_id, amount)')
+    .select('*, project_posts(*), project_supporters(id, user_id, amount, confirmed, profiles(display_name))')
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -141,18 +141,37 @@ const PAYMENT_METHODS = [
 
 function renderSupportSection(isOwner){
   const supportRows = project.project_supporters || [];
-  const totalCredits = supportRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const confirmedRows = supportRows.filter(s => s.confirmed && s.amount != null);
+  const pendingRows = supportRows.filter(s => !s.confirmed && s.amount != null);
+  const totalCredits = confirmedRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
   const mySupport = supportRows.find(s => s.user_id === currentUser?.id);
-  const peopleWord = supportRows.length === 1 ? t('feed.credits_person') : t('feed.credits_people');
+  const peopleWord = confirmedRows.length === 1 ? t('feed.credits_person') : t('feed.credits_people');
   const anyMethodSet = PAYMENT_METHODS.some(m => project[m.column]);
 
   let html = `<div class="section-block"><h2>${t('project.support_heading')}</h2>`;
   html += `
     <div class="credits-block">
-      <span class="credits-total">$${totalCredits.toFixed(2)}</span> ${t('feed.credits_from')} ${supportRows.length} ${peopleWord}
+      <span class="credits-total">$${totalCredits.toFixed(2)}</span> ${t('feed.credits_from')} ${confirmedRows.length} ${peopleWord}
       <div class="credits-note">${t('feed.credits_note')}</div>
     </div>
   `;
+
+  if (isOwner && pendingRows.length > 0){
+    html += `
+      <div class="notify-banner" style="margin-top:14px;">
+        <h3>🔔 ${pendingRows.length} ${pendingRows.length === 1 ? t('learnmore.pending_one') : t('learnmore.pending_other')}</h3>
+        ${pendingRows.map(s => `
+          <div class="notify-row">
+            <span class="req-name">${escapeHTML(s.profiles?.display_name || 'Someone')} — $${Number(s.amount).toFixed(2)}</span>
+            <div class="notify-actions">
+              <button class="btn btn-ghost btn-small" data-confirm-support="${s.id}">${t('learnmore.confirm_amount')}</button>
+              <button class="btn btn-ghost btn-small" data-deny-support="${s.id}">${t('learnmore.deny_amount')}</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
 
   if (!anyMethodSet && !isOwner){
     html += `<p class="credits-note" style="margin-top:12px;">${t('learnmore.no_payment_methods')}</p>`;
@@ -185,12 +204,17 @@ function renderSupportSection(isOwner){
     html += `</div>`;
   }
 
-  if (currentUser && anyMethodSet){
+  if (currentUser && anyMethodSet && !isOwner){
     html += `
       <form class="record-form" id="recordForm" style="margin-top:16px;">
         <input type="number" name="amount" min="0" step="0.01" placeholder="$" value="${mySupport?.amount ?? ''}">
         <button class="btn btn-ghost btn-small" type="submit">${mySupport ? t('common.update') : t('feed.log_sent')}</button>
       </form>
+      ${mySupport && mySupport.amount != null ? `
+        <p class="credits-note" style="margin-top:8px;">
+          ${mySupport.confirmed ? `✓ ${t('learnmore.your_amount_confirmed')}` : `⏳ ${t('learnmore.your_amount_pending')}`}
+        </p>
+      ` : ''}
     `;
   }
 
@@ -213,8 +237,6 @@ function render(){
       </p>
     </div>
   `;
-
-  html += renderSupportSection(isOwner);
 
   if (isOwner){
     const editingPost = editingPostId ? posts.find(p => p.id === editingPostId) : null;
@@ -275,6 +297,8 @@ function render(){
     });
     html += `</div>`;
   }
+
+  html += renderSupportSection(isOwner);
 
   content.innerHTML = html;
   wireEvents();
@@ -390,12 +414,21 @@ function wireEvents(){
     const amount = amountVal === '' ? null : Number(amountVal);
     const { data: existing } = await supabaseClient.from('project_supporters').select('id').eq('project_id', projectId).eq('user_id', currentUser.id).maybeSingle();
     if (existing){
-      await supabaseClient.from('project_supporters').update({ amount }).eq('id', existing.id);
+      await supabaseClient.from('project_supporters').update({ amount, confirmed: false }).eq('id', existing.id);
     } else {
-      await supabaseClient.from('project_supporters').insert({ project_id: projectId, user_id: currentUser.id, amount });
+      await supabaseClient.from('project_supporters').insert({ project_id: projectId, user_id: currentUser.id, amount, confirmed: false });
     }
     loadProject();
   });
+
+  content.querySelectorAll('[data-confirm-support]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_supporters').update({ confirmed: true }).eq('id', btn.dataset.confirmSupport);
+    loadProject();
+  }));
+  content.querySelectorAll('[data-deny-support]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_supporters').update({ amount: null, confirmed: false }).eq('id', btn.dataset.denySupport);
+    loadProject();
+  }));
 }
 
 async function init(){

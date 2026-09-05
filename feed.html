@@ -222,7 +222,7 @@ function cardHTML(p, opts){
   if (opts.example) {
     creditsBlock = `<div class="credits-block">$${p.credits || 0} ${t('feed.credits_from')} <span class="credits-note">(${t('feed.credits_note')})</span></div>`;
   } else {
-    const supportRows = p.project_supporters || [];
+    const supportRows = (p.project_supporters || []).filter(s => s.confirmed && s.amount != null);
     const supportCount = supportRows.length;
     const totalCredits = supportRows.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
     const peopleWord = supportCount === 1 ? t('feed.credits_person') : t('feed.credits_people');
@@ -267,7 +267,7 @@ async function loadFeed(){
 
   const { data: projects, error } = await supabaseClient
     .from('projects')
-    .select('*, project_supporters(user_id, amount), project_collaborators(status)')
+    .select('*, project_supporters(user_id, amount, confirmed), project_collaborators(status)')
     .order('created_at', { ascending: false });
 
   if (error){
@@ -279,7 +279,7 @@ async function loadFeed(){
 }
 
 function projectCredits(p){
-  return (p.project_supporters || []).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  return (p.project_supporters || []).filter(s => s.confirmed).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
 }
 function projectCollabCount(p){
   return (p.project_collaborators || []).filter(c => c.status === 'approved').length;
