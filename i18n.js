@@ -102,7 +102,7 @@ en: {
   "feed.guest_banner_1":"Browsing as a guest.","feed.guest_banner_login":"Log in","feed.guest_banner_or":"or",
   "feed.guest_banner_signup":"sign up free","feed.guest_banner_2":"to support a project or start your own.",
   "feed.limit_reached_1":"You've used your free project.","feed.limit_reached_2":"for $2 (one-time) to post more.",
-  "feed.empty_none":"No projects yet — be the first to start one.","feed.empty_filtered":"No projects match this filter.",
+  "feed.empty_none":"No projects yet — be the first to start one.","feed.empty_filtered":"No projects match this filter.","feed.load_more":"Load more",
   "feed.collaborating":"collaborating","feed.credits_from":"in supporter credits from","feed.credits_person":"person",
   "feed.credits_people":"people","feed.credits_note":"Self-reported — sent directly via PayPal, not verified by us.",
   "feed.send_credits":"Send credits via PayPal","feed.add_paypal":"+ Add PayPal account","feed.log_sent":"Log what I sent",
@@ -168,7 +168,7 @@ en: {
   "project.due":"Due",
   "project.youtube_err":"That doesn't look like a YouTube link.",
   "project.tab_feed":"Feed","project.tab_polls":"Polls","project.tab_events":"Events",
-  "project.feed_no_posts":"No updates yet — be the first to share one.","project.feed_add_post":"+ Share an update","project.feed_posted_by":"Posted by","project.created_by":"By",
+  "project.feed_no_posts":"No updates yet — be the first to share one.","project.feed_add_post":"+ Share an update","project.feed_posted_by":"Posted by","project.created_by":"By","project.feed_load_more":"Load more",
   "project.tab_costs":"Costs","project.no_costs":"No costs logged yet.","project.add_cost":"+ Add a cost",
   "project.cost_description":"Description","project.cost_amount":"Amount","project.cost_date_label":"Date (optional)",
   "project.cost_category":"Category (optional)","project.costs_total":"Total logged","project.cost_receipt":"Receipt (optional)",
@@ -202,9 +202,11 @@ en: {
   "admin.approved_heading":"Premium accounts","admin.no_approved":"No Premium accounts yet.","admin.revoke":"Revoke",
   "admin.flagged_heading":"Flagged content","admin.no_flagged":"Nothing flagged right now.","admin.clear_flag":"Clear","admin.delete_confirm":"Permanently delete this content?",
   "admin.type_post":"Post","admin.type_feed_post":"Team feed","admin.type_chat":"Chat message","admin.flagged_for":"Flagged for:",
+  "admin.analytics_heading":"Site analytics","admin.stat_total_users":"Total users","admin.stat_total_projects":"Total projects","admin.stat_premium":"Premium accounts",
+  "admin.stat_new_7d":"New users (7d)","admin.stat_new_30d":"New users (30d)","admin.stat_total_posts":"Total posts","admin.stat_total_messages":"Chat messages","admin.stat_flagged":"Flagged items",
   "admin.revoke_confirm":"Remove Premium from this account?",
   "chat.heading":"Team chat","chat.not_a_member":"You need to be part of this project's team to see the chat.",
-  "chat.empty_state":"No messages yet. Say hello 👋","chat.placeholder":"Type a message…","chat.send":"Send","chat.err_generic":"Message didn't send. Please try again.",
+  "chat.empty_state":"No messages yet. Say hello 👋","chat.placeholder":"Type a message…","chat.send":"Send","chat.err_generic":"Message didn't send. Please try again.","chat.load_older":"Load older messages",
   "moderation.flagged_notice":"This was flagged by our content filter and is only visible to you until an admin reviews it.",
   "project.no_polls":"No polls yet.","project.add_poll":"+ Create a poll","project.poll_question":"Question",
   "project.poll_options_label":"Options","project.poll_options_hint":"One option per line, at least 2",
@@ -224,7 +226,8 @@ en: {
   "learnmore.your_amount_confirmed":"Your contribution was confirmed by the manager.","learnmore.your_amount_pending":"Pending the manager's confirmation.",
   "learnmore.current_photo":"Current photo","learnmore.remove_image":"Remove current photo","learnmore.uploading":"Uploading photo…","learnmore.file_not_image":"Please choose an image file.","learnmore.file_too_large":"That photo is too large — please choose one under 8MB.",
   "learnmore.post_needs_content":"Add at least a caption, an image, or a video.","learnmore.private_page_note":"Team member?",
-  "learnmore.go_private":"Go to the private workspace →"
+  "learnmore.go_private":"Go to the private workspace →",
+  "learnmore.share":"Share","learnmore.link_copied":"Link copied to clipboard!","learnmore.default_og_description":"Together turns ideas into collaborative projects — join this one, or start your own."
 },
 
 es: {
@@ -323,7 +326,7 @@ es: {
   "feed.guest_banner_1":"Navegando como invitado.","feed.guest_banner_login":"Inicia sesión","feed.guest_banner_or":"o",
   "feed.guest_banner_signup":"regístrate gratis","feed.guest_banner_2":"para apoyar un proyecto o iniciar el tuyo.",
   "feed.limit_reached_1":"Ya usaste tu proyecto gratuito.","feed.limit_reached_2":"por $2 (pago único) para publicar más.",
-  "feed.empty_none":"Aún no hay proyectos — sé el primero en iniciar uno.","feed.empty_filtered":"Ningún proyecto coincide con este filtro.",
+  "feed.empty_none":"Aún no hay proyectos — sé el primero en iniciar uno.","feed.empty_filtered":"Ningún proyecto coincide con este filtro.","feed.load_more":"Cargar más",
   "feed.collaborating":"colaborando","feed.credits_from":"en créditos de aportantes de","feed.credits_person":"persona",
   "feed.credits_people":"personas","feed.credits_note":"Autoinformado — enviado directamente vía PayPal, no verificado por nosotros.",
   "feed.send_credits":"Enviar créditos vía PayPal","feed.add_paypal":"+ Añadir cuenta de PayPal","feed.log_sent":"Registrar lo que envié",
@@ -389,7 +392,7 @@ es: {
   "project.due":"Vence",
   "project.youtube_err":"Eso no parece un enlace de YouTube.",
   "project.tab_feed":"Feed","project.tab_polls":"Encuestas","project.tab_events":"Eventos",
-  "project.feed_no_posts":"Aún no hay actualizaciones — sé el primero en compartir una.","project.feed_add_post":"+ Compartir una actualización","project.feed_posted_by":"Publicado por","project.created_by":"Por",
+  "project.feed_no_posts":"Aún no hay actualizaciones — sé el primero en compartir una.","project.feed_add_post":"+ Compartir una actualización","project.feed_posted_by":"Publicado por","project.created_by":"Por","project.feed_load_more":"Cargar más",
   "project.tab_costs":"Costos","project.no_costs":"Aún no hay costos registrados.","project.add_cost":"+ Añadir un costo",
   "project.cost_description":"Descripción","project.cost_amount":"Monto","project.cost_date_label":"Fecha (opcional)",
   "project.cost_category":"Categoría (opcional)","project.costs_total":"Total registrado","project.cost_receipt":"Recibo (opcional)",
@@ -423,9 +426,11 @@ es: {
   "admin.approved_heading":"Cuentas Premium","admin.no_approved":"Aún no hay cuentas Premium.","admin.revoke":"Revocar",
   "admin.flagged_heading":"Contenido marcado","admin.no_flagged":"Nada marcado por ahora.","admin.clear_flag":"Aprobar","admin.delete_confirm":"¿Eliminar este contenido de forma permanente?",
   "admin.type_post":"Publicación","admin.type_feed_post":"Feed del equipo","admin.type_chat":"Mensaje de chat","admin.flagged_for":"Marcado por:",
+  "admin.analytics_heading":"Analíticas del sitio","admin.stat_total_users":"Usuarios totales","admin.stat_total_projects":"Proyectos totales","admin.stat_premium":"Cuentas Premium",
+  "admin.stat_new_7d":"Nuevos usuarios (7d)","admin.stat_new_30d":"Nuevos usuarios (30d)","admin.stat_total_posts":"Publicaciones totales","admin.stat_total_messages":"Mensajes de chat","admin.stat_flagged":"Elementos marcados",
   "admin.revoke_confirm":"¿Quitar Premium a esta cuenta?",
   "chat.heading":"Chat del equipo","chat.not_a_member":"Debes ser parte del equipo de este proyecto para ver el chat.",
-  "chat.empty_state":"Aún no hay mensajes. Saluda 👋","chat.placeholder":"Escribe un mensaje…","chat.send":"Enviar","chat.err_generic":"El mensaje no se envió. Inténtalo de nuevo.",
+  "chat.empty_state":"Aún no hay mensajes. Saluda 👋","chat.placeholder":"Escribe un mensaje…","chat.send":"Enviar","chat.err_generic":"El mensaje no se envió. Inténtalo de nuevo.","chat.load_older":"Cargar mensajes anteriores",
   "moderation.flagged_notice":"Esto fue marcado por nuestro filtro de contenido y solo tú puedes verlo hasta que un administrador lo revise.",
   "project.no_polls":"Aún no hay encuestas.","project.add_poll":"+ Crear una encuesta","project.poll_question":"Pregunta",
   "project.poll_options_label":"Opciones","project.poll_options_hint":"Una opción por línea, al menos 2",
@@ -445,7 +450,8 @@ es: {
   "learnmore.your_amount_confirmed":"Tu contribución fue confirmada por el gestor.","learnmore.your_amount_pending":"Pendiente de confirmación del gestor.",
   "learnmore.current_photo":"Foto actual","learnmore.remove_image":"Eliminar foto actual","learnmore.uploading":"Subiendo foto…","learnmore.file_not_image":"Por favor elige un archivo de imagen.","learnmore.file_too_large":"Esa foto es demasiado grande — elige una de menos de 8MB.",
   "learnmore.post_needs_content":"Añade al menos un texto, una imagen o un video.","learnmore.private_page_note":"¿Eres parte del equipo?",
-  "learnmore.go_private":"Ir al espacio de trabajo privado →"
+  "learnmore.go_private":"Ir al espacio de trabajo privado →",
+  "learnmore.share":"Compartir","learnmore.link_copied":"¡Enlace copiado al portapapeles!","learnmore.default_og_description":"Together convierte ideas en proyectos colaborativos — únete a este o comienza el tuyo."
 },
 
 fr: {
@@ -544,7 +550,7 @@ fr: {
   "feed.guest_banner_1":"Navigation en tant qu'invité.","feed.guest_banner_login":"Connectez-vous","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"inscrivez-vous gratuitement","feed.guest_banner_2":"pour soutenir un projet ou lancer le vôtre.",
   "feed.limit_reached_1":"Vous avez utilisé votre projet gratuit.","feed.limit_reached_2":"pour $2 (paiement unique) afin d'en publier plus.",
-  "feed.empty_none":"Pas encore de projets — soyez le premier à en lancer un.","feed.empty_filtered":"Aucun projet ne correspond à ce filtre.",
+  "feed.empty_none":"Pas encore de projets — soyez le premier à en lancer un.","feed.empty_filtered":"Aucun projet ne correspond à ce filtre.","feed.load_more":"Charger plus",
   "feed.collaborating":"collaborateurs","feed.credits_from":"en crédits de soutien de la part de","feed.credits_person":"personne",
   "feed.credits_people":"personnes","feed.credits_note":"Auto-déclaré — envoyé directement via PayPal, non vérifié par nous.",
   "feed.send_credits":"Envoyer des crédits via PayPal","feed.add_paypal":"+ Ajouter un compte PayPal","feed.log_sent":"Enregistrer mon envoi",
@@ -610,7 +616,7 @@ fr: {
   "project.due":"Échéance",
   "project.youtube_err":"Cela ne ressemble pas à un lien YouTube.",
   "project.tab_feed":"Fil","project.tab_polls":"Sondages","project.tab_events":"Événements",
-  "project.feed_no_posts":"Pas encore de mises à jour — soyez le premier à en partager une.","project.feed_add_post":"+ Partager une mise à jour","project.feed_posted_by":"Publié par","project.created_by":"Par",
+  "project.feed_no_posts":"Pas encore de mises à jour — soyez le premier à en partager une.","project.feed_add_post":"+ Partager une mise à jour","project.feed_posted_by":"Publié par","project.created_by":"Par","project.feed_load_more":"Charger plus",
   "project.tab_costs":"Coûts","project.no_costs":"Aucun coût enregistré pour l'instant.","project.add_cost":"+ Ajouter un coût",
   "project.cost_description":"Description","project.cost_amount":"Montant","project.cost_date_label":"Date (optionnel)",
   "project.cost_category":"Catégorie (optionnel)","project.costs_total":"Total enregistré","project.cost_receipt":"Reçu (optionnel)",
@@ -644,9 +650,11 @@ fr: {
   "admin.approved_heading":"Comptes Premium","admin.no_approved":"Pas encore de compte Premium.","admin.revoke":"Révoquer",
   "admin.flagged_heading":"Contenu signalé","admin.no_flagged":"Rien de signalé pour l'instant.","admin.clear_flag":"Approuver","admin.delete_confirm":"Supprimer définitivement ce contenu ?",
   "admin.type_post":"Publication","admin.type_feed_post":"Fil de l'équipe","admin.type_chat":"Message de chat","admin.flagged_for":"Signalé pour :",
+  "admin.analytics_heading":"Statistiques du site","admin.stat_total_users":"Utilisateurs au total","admin.stat_total_projects":"Projets au total","admin.stat_premium":"Comptes Premium",
+  "admin.stat_new_7d":"Nouveaux utilisateurs (7j)","admin.stat_new_30d":"Nouveaux utilisateurs (30j)","admin.stat_total_posts":"Publications au total","admin.stat_total_messages":"Messages de chat","admin.stat_flagged":"Éléments signalés",
   "admin.revoke_confirm":"Retirer le Premium de ce compte ?",
   "chat.heading":"Chat d'équipe","chat.not_a_member":"Vous devez faire partie de l'équipe de ce projet pour voir le chat.",
-  "chat.empty_state":"Pas encore de messages. Dites bonjour 👋","chat.placeholder":"Écrivez un message…","chat.send":"Envoyer","chat.err_generic":"Le message n'a pas été envoyé. Veuillez réessayer.",
+  "chat.empty_state":"Pas encore de messages. Dites bonjour 👋","chat.placeholder":"Écrivez un message…","chat.send":"Envoyer","chat.err_generic":"Le message n'a pas été envoyé. Veuillez réessayer.","chat.load_older":"Charger les messages précédents",
   "moderation.flagged_notice":"Ceci a été signalé par notre filtre de contenu et n'est visible que par vous jusqu'à ce qu'un administrateur l'examine.",
   "project.no_polls":"Pas encore de sondages.","project.add_poll":"+ Créer un sondage","project.poll_question":"Question",
   "project.poll_options_label":"Options","project.poll_options_hint":"Une option par ligne, au moins 2",
@@ -666,7 +674,8 @@ fr: {
   "learnmore.your_amount_confirmed":"Votre contribution a été confirmée par le gestionnaire.","learnmore.your_amount_pending":"En attente de confirmation du gestionnaire.",
   "learnmore.current_photo":"Photo actuelle","learnmore.remove_image":"Supprimer la photo actuelle","learnmore.uploading":"Téléversement de la photo…","learnmore.file_not_image":"Veuillez choisir un fichier image.","learnmore.file_too_large":"Cette photo est trop grande — choisissez-en une de moins de 8 Mo.",
   "learnmore.post_needs_content":"Ajoutez au moins un texte, une image ou une vidéo.","learnmore.private_page_note":"Membre de l'équipe ?",
-  "learnmore.go_private":"Aller à l'espace de travail privé →"
+  "learnmore.go_private":"Aller à l'espace de travail privé →",
+  "learnmore.share":"Partager","learnmore.link_copied":"Lien copié dans le presse-papiers !","learnmore.default_og_description":"Together transforme des idées en projets collaboratifs — rejoignez celui-ci, ou lancez le vôtre."
 },
 
 pt: {
@@ -765,7 +774,7 @@ pt: {
   "feed.guest_banner_1":"Navegando como visitante.","feed.guest_banner_login":"Entre","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"cadastre-se grátis","feed.guest_banner_2":"para apoiar um projeto ou iniciar o seu.",
   "feed.limit_reached_1":"Você já usou seu projeto gratuito.","feed.limit_reached_2":"por $2 (pagamento único) para publicar mais.",
-  "feed.empty_none":"Ainda não há projetos — seja o primeiro a iniciar um.","feed.empty_filtered":"Nenhum projeto corresponde a este filtro.",
+  "feed.empty_none":"Ainda não há projetos — seja o primeiro a iniciar um.","feed.empty_filtered":"Nenhum projeto corresponde a este filtro.","feed.load_more":"Carregar mais",
   "feed.collaborating":"colaborando","feed.credits_from":"em créditos de apoiadores de","feed.credits_person":"pessoa",
   "feed.credits_people":"pessoas","feed.credits_note":"Autodeclarado — enviado diretamente via PayPal, não verificado por nós.",
   "feed.send_credits":"Enviar créditos via PayPal","feed.add_paypal":"+ Adicionar conta do PayPal","feed.log_sent":"Registrar o que enviei",
@@ -831,7 +840,7 @@ pt: {
   "project.due":"Prazo",
   "project.youtube_err":"Isso não parece um link do YouTube.",
   "project.tab_feed":"Feed","project.tab_polls":"Enquetes","project.tab_events":"Eventos",
-  "project.feed_no_posts":"Ainda não há atualizações — seja o primeiro a compartilhar uma.","project.feed_add_post":"+ Compartilhar uma atualização","project.feed_posted_by":"Publicado por","project.created_by":"Por",
+  "project.feed_no_posts":"Ainda não há atualizações — seja o primeiro a compartilhar uma.","project.feed_add_post":"+ Compartilhar uma atualização","project.feed_posted_by":"Publicado por","project.created_by":"Por","project.feed_load_more":"Carregar mais",
   "project.tab_costs":"Custos","project.no_costs":"Ainda não há custos registrados.","project.add_cost":"+ Adicionar um custo",
   "project.cost_description":"Descrição","project.cost_amount":"Valor","project.cost_date_label":"Data (opcional)",
   "project.cost_category":"Categoria (opcional)","project.costs_total":"Total registrado","project.cost_receipt":"Recibo (opcional)",
@@ -865,9 +874,11 @@ pt: {
   "admin.approved_heading":"Contas Premium","admin.no_approved":"Ainda não há contas Premium.","admin.revoke":"Revogar",
   "admin.flagged_heading":"Conteúdo sinalizado","admin.no_flagged":"Nada sinalizado no momento.","admin.clear_flag":"Aprovar","admin.delete_confirm":"Excluir este conteúdo permanentemente?",
   "admin.type_post":"Publicação","admin.type_feed_post":"Feed da equipe","admin.type_chat":"Mensagem de chat","admin.flagged_for":"Sinalizado por:",
+  "admin.analytics_heading":"Análises do site","admin.stat_total_users":"Total de usuários","admin.stat_total_projects":"Total de projetos","admin.stat_premium":"Contas Premium",
+  "admin.stat_new_7d":"Novos usuários (7d)","admin.stat_new_30d":"Novos usuários (30d)","admin.stat_total_posts":"Total de publicações","admin.stat_total_messages":"Mensagens de chat","admin.stat_flagged":"Itens sinalizados",
   "admin.revoke_confirm":"Remover o Premium desta conta?",
   "chat.heading":"Chat da equipe","chat.not_a_member":"Você precisa fazer parte da equipe deste projeto para ver o chat.",
-  "chat.empty_state":"Ainda não há mensagens. Diga oi 👋","chat.placeholder":"Digite uma mensagem…","chat.send":"Enviar","chat.err_generic":"A mensagem não foi enviada. Tente novamente.",
+  "chat.empty_state":"Ainda não há mensagens. Diga oi 👋","chat.placeholder":"Digite uma mensagem…","chat.send":"Enviar","chat.err_generic":"A mensagem não foi enviada. Tente novamente.","chat.load_older":"Carregar mensagens anteriores",
   "moderation.flagged_notice":"Isso foi sinalizado pelo nosso filtro de conteúdo e só é visível para você até um admin revisar.",
   "project.no_polls":"Ainda não há enquetes.","project.add_poll":"+ Criar uma enquete","project.poll_question":"Pergunta",
   "project.poll_options_label":"Opções","project.poll_options_hint":"Uma opção por linha, pelo menos 2",
@@ -887,7 +898,8 @@ pt: {
   "learnmore.your_amount_confirmed":"Sua contribuição foi confirmada pelo gestor.","learnmore.your_amount_pending":"Aguardando confirmação do gestor.",
   "learnmore.current_photo":"Foto atual","learnmore.remove_image":"Remover foto atual","learnmore.uploading":"Enviando foto…","learnmore.file_not_image":"Por favor escolha um arquivo de imagem.","learnmore.file_too_large":"Essa foto é grande demais — escolha uma com menos de 8MB.",
   "learnmore.post_needs_content":"Adicione pelo menos um texto, uma imagem ou um vídeo.","learnmore.private_page_note":"É parte da equipe?",
-  "learnmore.go_private":"Ir para o espaço de trabalho privado →"
+  "learnmore.go_private":"Ir para o espaço de trabalho privado →",
+  "learnmore.share":"Compartilhar","learnmore.link_copied":"Link copiado para a área de transferência!","learnmore.default_og_description":"Together transforma ideias em projetos colaborativos — participe deste ou comece o seu."
 }
 };
 

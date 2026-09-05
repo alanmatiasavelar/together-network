@@ -71,6 +71,7 @@ let isAdmin = false;
 let pending = [];
 let approved = [];
 let flagged = [];
+let stats = null;
 let loaded = false;
 
 function renderNav(){
@@ -109,13 +110,38 @@ function renderNotAuthorized(){
 }
 
 async function loadAdmin(){
-  const [{ data: pendingRows }, { data: approvedRows }, { data: flaggedPosts }, { data: flaggedFeedPosts }, { data: flaggedChat }] = await Promise.all([
+  const now = new Date();
+  const d7 = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const d30 = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [
+    { data: pendingRows }, { data: approvedRows }, { data: flaggedPosts }, { data: flaggedFeedPosts }, { data: flaggedChat },
+    { count: totalUsers }, { count: totalProjects }, { count: newUsers7d }, { count: newUsers30d },
+    { count: totalFeedPosts }, { count: totalPublicPosts }, { count: totalChatMessages },
+    { data: stageRows }
+  ] = await Promise.all([
     supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('premium_status', 'pending').order('created_at', { ascending: true }),
     supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('is_premium', true).order('created_at', { ascending: true }),
     supabaseClient.from('project_posts').select('id, text, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false }),
     supabaseClient.from('project_feed_posts').select('id, text, user_name, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false }),
-    supabaseClient.from('project_chat_messages').select('id, body, user_name, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false })
+    supabaseClient.from('project_chat_messages').select('id, body, user_name, flag_categories, created_at, projects(title)').eq('flagged', true).order('created_at', { ascending: false }),
+    supabaseClient.from('profiles').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('projects').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', d7),
+    supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).gte('created_at', d30),
+    supabaseClient.from('project_feed_posts').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('project_posts').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('project_chat_messages').select('id', { count: 'exact', head: true }),
+    supabaseClient.from('projects').select('stage')
   ]);
+  const stageCounts = {};
+  (stageRows || []).forEach(p => { stageCounts[p.stage] = (stageCounts[p.stage] || 0) + 1; });
+  stats = {
+    totalUsers: totalUsers || 0, totalProjects: totalProjects || 0,
+    newUsers7d: newUsers7d || 0, newUsers30d: newUsers30d || 0,
+    totalPosts: (totalFeedPosts || 0) + (totalPublicPosts || 0), totalChatMessages: totalChatMessages || 0,
+    stageCounts
+  };
   pending = pendingRows || [];
   approved = approvedRows || [];
   flagged = [
@@ -130,7 +156,26 @@ async function loadAdmin(){
 function render(){
   let html = `<h1>${t('admin.heading')}</h1><p class="auth-sub" style="margin-top:6px;">${t('admin.sub')}</p>`;
 
-  html += `<div class="section-block" style="margin-top:28px;"><h2>${t('admin.pending_heading')}</h2>`;
+  if (stats){
+    const stageOrder = ['create', 'recruit', 'work', 'track', 'finish'];
+    html += `<div class="section-block" style="margin-top:28px;"><h2>${t('admin.analytics_heading')}</h2>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-value">${stats.totalUsers}</div><div class="stat-label">${t('admin.stat_total_users')}</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.totalProjects}</div><div class="stat-label">${t('admin.stat_total_projects')}</div></div>
+        <div class="stat-card"><div class="stat-value">${approved.length}</div><div class="stat-label">${t('admin.stat_premium')}</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.newUsers7d}</div><div class="stat-label">${t('admin.stat_new_7d')}</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.newUsers30d}</div><div class="stat-label">${t('admin.stat_new_30d')}</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.totalPosts}</div><div class="stat-label">${t('admin.stat_total_posts')}</div></div>
+        <div class="stat-card"><div class="stat-value">${stats.totalChatMessages}</div><div class="stat-label">${t('admin.stat_total_messages')}</div></div>
+        <div class="stat-card"><div class="stat-value">${flagged.length}</div><div class="stat-label">${t('admin.stat_flagged')}</div></div>
+      </div>
+      <div class="card-row" style="margin-top:14px;">
+        ${stageOrder.map(s => `<span class="chip">${t('project.stage_' + s)}: ${stats.stageCounts[s] || 0}</span>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  html += `<div class="section-block"><h2>${t('admin.pending_heading')}</h2>`;
   if (pending.length === 0){
     html += `<p class="credits-note">${t('admin.no_pending')}</p>`;
   } else {

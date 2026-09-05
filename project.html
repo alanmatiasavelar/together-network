@@ -102,6 +102,7 @@ const YOUTUBE_LINK_PATTERN = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 
 async function uploadFeedImage(file){
+  file = await compressImage(file);
   const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
   const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const path = `${projectId}/feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -112,6 +113,7 @@ async function uploadFeedImage(file){
 }
 
 async function uploadCoverImage(file){
+  file = await compressImage(file);
   const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
   const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const path = `${projectId}/cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -138,7 +140,6 @@ async function loadProject(){
       project_collaborators(id, user_id, status, profiles(display_name)),
       project_supporters(user_id, amount),
       project_tasks(*, task_assignees(user_id, profiles(display_name))),
-      project_feed_posts(*),
       project_polls(*, poll_votes(user_id, option_index)),
       project_events(*, event_rsvps(user_id, status)),
       project_costs(*),
@@ -151,7 +152,21 @@ async function loadProject(){
     return;
   }
   project = data;
+  await loadFeedPosts();
   render();
+}
+
+const FEED_PAGE_SIZE = 15;
+let feedPosts = [];
+let hasMoreFeedPosts = false;
+
+async function loadFeedPosts(loadMore){
+  let q = supabaseClient.from('project_feed_posts').select('*').eq('project_id', projectId)
+    .order('created_at', { ascending: false }).limit(FEED_PAGE_SIZE);
+  if (loadMore && feedPosts.length) q = q.lt('created_at', feedPosts[feedPosts.length - 1].created_at);
+  const { data: page } = await q;
+  hasMoreFeedPosts = (page || []).length === FEED_PAGE_SIZE;
+  feedPosts = loadMore ? feedPosts.concat(page || []) : (page || []);
 }
 
 function render(){
@@ -353,7 +368,7 @@ function renderLocked(myCollab){
 
 function renderFeedPanel(){
   const isOwner = currentUser && currentUser.id === project.owner_id;
-  const posts = (project.project_feed_posts || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  const posts = feedPosts;
   const editingPost = editingFeedPostId ? posts.find(p => p.id === editingFeedPostId) : null;
 
   let html = `
@@ -403,6 +418,9 @@ function renderFeedPanel(){
         </article>
       `;
     });
+    if (hasMoreFeedPosts){
+      html += `<button class="btn btn-ghost btn-small" id="loadMoreFeedBtn" type="button" style="margin-top:10px;">${t('project.feed_load_more')}</button>`;
+    }
   }
   return html;
 }
@@ -1125,7 +1143,7 @@ function wireEvents(){
     const file = e.target.querySelector('input[name="image_file"]').files[0];
     const removeImage = fd.get('remove_image') === 'on';
     const editingId = e.target.dataset.editing;
-    const existingPost = editingId ? (project.project_feed_posts || []).find(p => p.id === editingId) : null;
+    const existingPost = editingId ? feedPosts.find(p => p.id === editingId) : null;
 
     if (ytLink && !YOUTUBE_LINK_PATTERN.test(ytLink)){ msg.textContent = t('project.youtube_err'); msg.className = 'form-msg error'; return; }
 
@@ -1179,6 +1197,12 @@ function wireEvents(){
     await supabaseClient.from('project_feed_posts').delete().eq('id', btn.dataset.deleteFeedpost);
     loadProject();
   }));
+  const loadMoreFeedBtn = document.getElementById('loadMoreFeedBtn');
+  if (loadMoreFeedBtn) loadMoreFeedBtn.addEventListener('click', async () => {
+    loadMoreFeedBtn.disabled = true;
+    await loadFeedPosts(true);
+    render();
+  });
 
   // --- Polls ---
   const pollForm = document.getElementById('pollForm');

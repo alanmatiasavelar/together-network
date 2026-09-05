@@ -286,9 +286,13 @@ function projectCollabCount(p){
   return (p.project_collaborators || []).filter(c => c.status === 'approved').length;
 }
 
-function renderFilteredFeed(){
+const FEED_PAGE_SIZE = 12;
+let feedRenderLimit = FEED_PAGE_SIZE;
+
+function renderFilteredFeed(resetLimit = true){
   const grid = document.getElementById('feedGrid');
   if (!supabaseClient) return;
+  if (resetLimit) feedRenderLimit = FEED_PAGE_SIZE;
   const category = document.getElementById('filterCategory')?.value || 'all';
   const type = document.getElementById('filterType')?.value || 'all';
   const sort = document.getElementById('sortBy')?.value || 'newest';
@@ -314,7 +318,17 @@ function renderFilteredFeed(){
     grid.innerHTML = `<p class="feed-empty">${allProjects.length === 0 ? t('feed.empty_none') : t('feed.empty_filtered')}</p>`;
     return;
   }
-  grid.innerHTML = filtered.map(p => cardHTML(p, { example: false })).join('');
+  const visible = filtered.slice(0, feedRenderLimit);
+  const existingBtn = document.getElementById('feedLoadMoreBtn');
+  if (existingBtn) existingBtn.remove();
+  grid.innerHTML = visible.map(p => cardHTML(p, { example: false })).join('');
+  if (filtered.length > visible.length){
+    grid.insertAdjacentHTML('afterend', `<button class="btn btn-ghost" id="feedLoadMoreBtn" type="button" style="margin:20px auto 0;display:block;">${t('feed.load_more')}</button>`);
+    document.getElementById('feedLoadMoreBtn').addEventListener('click', () => {
+      feedRenderLimit += FEED_PAGE_SIZE;
+      renderFilteredFeed(false);
+    });
+  }
 }
 
 function updateCardHTML(post){

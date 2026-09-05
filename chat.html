@@ -72,6 +72,9 @@ let project = null;
 let isTeamMember = false;
 let messages = [];
 let chatChannel = null;
+const CHAT_PAGE_SIZE = 30;
+let hasMoreOlder = false;
+let loadingOlder = false;
 
 function renderNav(){
   if (currentUser){
@@ -128,22 +131,45 @@ async function loadChat(){
     .from('project_chat_messages')
     .select('*')
     .eq('project_id', projectId)
-    .order('created_at', { ascending: true })
-    .limit(200);
+    .order('created_at', { ascending: false })
+    .limit(CHAT_PAGE_SIZE);
   if (msgError){
     content.innerHTML = `<p class="form-msg error">${escapeHTML(msgError.message)}</p>`;
     return;
   }
-  messages = msgData || [];
+  messages = (msgData || []).slice().reverse();
+  hasMoreOlder = (msgData || []).length === CHAT_PAGE_SIZE;
 
   render();
   subscribeToChat();
 }
 
-function renderMessages(){
+async function loadOlderMessages(){
+  if (!hasMoreOlder || !messages.length || loadingOlder) return;
+  loadingOlder = true;
+  const btn = document.getElementById('loadOlderBtn');
+  if (btn) btn.disabled = true;
+  const { data: older } = await supabaseClient
+    .from('project_chat_messages')
+    .select('*')
+    .eq('project_id', projectId)
+    .lt('created_at', messages[0].created_at)
+    .order('created_at', { ascending: false })
+    .limit(CHAT_PAGE_SIZE);
+  hasMoreOlder = (older || []).length === CHAT_PAGE_SIZE;
+  messages = (older || []).slice().reverse().concat(messages);
+  loadingOlder = false;
+  renderMessages({ preserveScroll: true });
+}
+
+function renderMessages(opts = {}){
   const log = document.getElementById('chatLog');
   if (!log) return;
-  log.innerHTML = messages.length === 0
+  const prevScrollHeight = log.scrollHeight;
+  const loadOlderHTML = hasMoreOlder
+    ? `<button class="btn btn-ghost btn-small" id="loadOlderBtn" type="button" style="margin:0 auto 14px;display:block;">${t('chat.load_older')}</button>`
+    : '';
+  log.innerHTML = loadOlderHTML + (messages.length === 0
     ? `<p class="credits-note">${t('chat.empty_state')}</p>`
     : messages.map(m => {
         const own = currentUser && m.user_id === currentUser.id;
@@ -155,8 +181,16 @@ function renderMessages(){
             <div class="chat-msg-time">${escapeHTML(when)}</div>
           </div>
         `;
-      }).join('');
-  log.scrollTop = log.scrollHeight;
+      }).join(''));
+
+  const loadOlderBtn = document.getElementById('loadOlderBtn');
+  if (loadOlderBtn) loadOlderBtn.addEventListener('click', loadOlderMessages);
+
+  if (opts.preserveScroll){
+    log.scrollTop = log.scrollHeight - prevScrollHeight;
+  } else {
+    log.scrollTop = log.scrollHeight;
+  }
 }
 
 function render(){

@@ -4,6 +4,12 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Learn more — Together</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Together">
+<meta id="ogTitle" property="og:title" content="Join a project on Together">
+<meta id="ogDescription" property="og:description" content="Together turns ideas into collaborative projects — join this one, or start your own.">
+<meta id="ogImage" property="og:image" content="https://alanmatiasavelar.github.io/together-network/assets/logo.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
@@ -75,6 +81,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 const YOUTUBE_LINK_PATTERN = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//;
 
 async function uploadPostImage(file){
+  file = await compressImage(file);
   const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
   const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const path = `${projectId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
@@ -232,6 +239,10 @@ function render(){
       ${project.image_url ? `<img class="feed-card-image" src="${escapeHTML(project.image_url)}" alt="${escapeHTML(project.title)}" onerror="this.remove()">` : ''}
       <h1>${escapeHTML(project.title)}</h1>
       <p>${escapeHTML(project.pitch)}</p>
+      <div class="card-row" style="justify-content:center;margin-top:14px;">
+        <button class="btn btn-ghost btn-small" id="shareProjectBtn" type="button">${t('learnmore.share')}</button>
+      </div>
+      <p class="form-msg" id="shareMsg" style="text-align:center;"></p>
       <p style="margin-top:14px;">
         <span data-i18n="learnmore.private_page_note">${t('learnmore.private_page_note')}</span>
         <a class="view-project-link" href="project.html?id=${projectId}">${t('learnmore.go_private')}</a>
@@ -302,10 +313,40 @@ function render(){
   html += renderSupportSection(isOwner);
 
   content.innerHTML = html;
+  updatePageMeta();
   wireEvents();
 }
 
+function updatePageMeta(){
+  const title = `${project.title} — Together`;
+  document.title = title;
+  const ogTitle = document.getElementById('ogTitle');
+  const ogDesc = document.getElementById('ogDescription');
+  const ogImage = document.getElementById('ogImage');
+  if (ogTitle) ogTitle.setAttribute('content', title);
+  if (ogDesc) ogDesc.setAttribute('content', project.pitch || t('learnmore.default_og_description'));
+  if (ogImage && project.image_url) ogImage.setAttribute('content', project.image_url);
+}
+
 function wireEvents(){
+  const shareBtn = document.getElementById('shareProjectBtn');
+  if (shareBtn) shareBtn.addEventListener('click', async () => {
+    const shareMsg = document.getElementById('shareMsg');
+    const shareData = { title: project.title, text: project.pitch || '', url: window.location.href };
+    if (navigator.share){
+      try { await navigator.share(shareData); } catch (err) { /* user cancelled — no error to show */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      shareMsg.textContent = t('learnmore.link_copied');
+      shareMsg.className = 'form-msg ok';
+    } catch (err) {
+      shareMsg.textContent = window.location.href;
+      shareMsg.className = 'form-msg';
+    }
+  });
+
   const postForm = document.getElementById('postForm');
   if (postForm) postForm.addEventListener('submit', async (e) => {
     e.preventDefault();

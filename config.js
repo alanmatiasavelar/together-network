@@ -48,6 +48,38 @@ function youtubeEmbedHTML(url){
   return `<div class="yt-embed"><iframe src="https://www.youtube-nocookie.com/embed/${id}" title="Project video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>`;
 }
 
+/* ====================================================================
+   Image compression — shrinks photos client-side before upload (max 1600px
+   on the long edge, re-encoded as JPEG) to save storage and load faster.
+   Fails open: any error, unsupported browser, or file that's already small
+   just returns the original file untouched, so uploads never break because
+   of this. Don't use this on QR codes — lossy re-encoding can blur the fine
+   modules enough to make them unscannable.
+   ==================================================================== */
+async function compressImage(file, { maxDim = 1600, quality = 0.82 } = {}){
+  if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/svg+xml') return file;
+  if (file.size < 350 * 1024) return file; // already small; not worth re-encoding
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const targetW = Math.max(1, Math.round(bitmap.width * scale));
+    const targetH = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, targetW, targetH);
+    bitmap.close?.();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+    if (!blob || blob.size >= file.size) return file; // compression didn't actually help
+    const newName = (file.name || 'image').replace(/\.[a-zA-Z0-9]+$/, '') + '.jpg';
+    return new File([blob], newName, { type: 'image/jpeg' });
+  } catch (err) {
+    console.warn('Together: image compression skipped, uploading original.', err);
+    return file;
+  }
+}
+
 /* Small helper every page uses to show/hide the "connect your database" banner. */
 function showConfigBannerIfNeeded(){
   const banner = document.getElementById('configBanner');
