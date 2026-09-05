@@ -140,7 +140,11 @@ async function loadDashboard(){
 }
 
 function render(){
-  let html = `<h1>${t('dashboard.heading')}</h1>`;
+  let html = `<h1>${t('dashboard.heading')}</h1>
+    <div class="hero-ctas" style="margin-top:10px;">
+      <a class="btn btn-ghost btn-small" href="my-analytics.html">${t('dashboard.view_analytics')}</a>
+    </div>
+  `;
 
   html += `<div class="section-block" style="margin-top:28px;"><h2>${t('dashboard.my_projects')}</h2>`;
   if (myProjects.length === 0){
