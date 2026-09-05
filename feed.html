@@ -398,7 +398,7 @@ async function checkProjectLimit(){
   if (!supabaseClient || !currentUser) return;
   const { data: profile } = await supabaseClient.from('profiles').select('is_premium').eq('id', currentUser.id).single();
   if (profile && profile.is_premium) return;
-  const { count } = await supabaseClient.from('projects').select('id', { count: 'exact', head: true }).eq('owner_id', currentUser.id);
+  const { count } = await supabaseClient.from('projects').select('id', { count: 'exact', head: true }).eq('owner_id', currentUser.id).neq('stage', 'finish');
   if ((count || 0) >= 1){
     section.innerHTML = `
       <div class="session-banner">

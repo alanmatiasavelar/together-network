@@ -73,6 +73,7 @@ function renderNav(){
     const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
     navAuth.innerHTML = `
       <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      ${(currentUser.email || '').toLowerCase() === 'aolbr_mail@yahoo.com.br' ? `<a class="btn btn-ghost btn-small" href="admin.html">${t('admin.nav_link')}</a>` : ''}
       <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
     `;
     initNotifications(currentUser);

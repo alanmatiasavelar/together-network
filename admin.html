@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Site admin — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_projects">connect a free Supabase project to view real projects.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.jpg" alt="Together"/></a>
+    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <div class="nav-auth" id="navAuth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+      <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
+    </div>
+    <span id="notifSlot"></span>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding-top:52px;padding-bottom:60px;">
+    <div id="pageContent"><div class="loading-state"><span class="spinner" aria-hidden="true"></span><span data-i18n="common.loading">Loading…</span></div></div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+document.getElementById('year').textContent = new Date().getFullYear();
+showConfigBannerIfNeeded();
+document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+wireLangSwitcher();
+applyStaticTranslations();
+
+function onLangChange(){
+  renderNav();
+  if (loaded) render();
+}
+
+const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
+
+const navAuth = document.getElementById('navAuth');
+const content = document.getElementById('pageContent');
+
+let currentUser = null;
+let isAdmin = false;
+let pending = [];
+let approved = [];
+let loaded = false;
+
+function renderNav(){
+  if (currentUser){
+    const name = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost btn-small" href="dashboard.html">${t('nav.dashboard')}</a>
+      <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
+      <a class="btn btn-ghost btn-small" href="feed.html">${t('nav.feed')}</a>
+    `;
+    initNotifications(currentUser);
+  } else {
+    navAuth.innerHTML = `
+      <a class="btn btn-ghost" href="login.html">${t('nav.login')}</a>
+      <a class="btn btn-primary" href="signup.html">${t('nav.signup')}</a>
+    `;
+    teardownNotifications();
+  }
+}
+
+function renderLoggedOut(){
+  content.innerHTML = `
+    <h1>${t('admin.heading')}</h1>
+    <p class="auth-sub" style="margin-top:8px;">${t('admin.login_prompt')}</p>
+    <div class="hero-ctas" style="margin-top:16px;">
+      <a class="btn btn-primary" href="login.html">${t('nav.login')}</a>
+    </div>
+  `;
+}
+
+function renderNotAuthorized(){
+  content.innerHTML = `
+    <h1>${t('admin.heading')}</h1>
+    <p class="auth-sub" style="margin-top:8px;">${t('admin.not_authorized')}</p>
+  `;
+}
+
+async function loadAdmin(){
+  const [{ data: pendingRows }, { data: approvedRows }] = await Promise.all([
+    supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('premium_status', 'pending').order('created_at', { ascending: true }),
+    supabaseClient.from('profiles').select('id, display_name, email, created_at').eq('is_premium', true).order('created_at', { ascending: true })
+  ]);
+  pending = pendingRows || [];
+  approved = approvedRows || [];
+  loaded = true;
+  render();
+}
+
+function render(){
+  let html = `<h1>${t('admin.heading')}</h1><p class="auth-sub" style="margin-top:6px;">${t('admin.sub')}</p>`;
+
+  html += `<div class="section-block" style="margin-top:28px;"><h2>${t('admin.pending_heading')}</h2>`;
+  if (pending.length === 0){
+    html += `<p class="credits-note">${t('admin.no_pending')}</p>`;
+  } else {
+    pending.forEach(p => {
+      html += `
+        <div class="notify-row">
+          <span class="req-name">${escapeHTML(p.display_name)} — ${escapeHTML(p.email)}</span>
+          <div class="notify-actions">
+            <button class="btn btn-ghost btn-small" data-approve-premium="${p.id}">${t('admin.approve')}</button>
+            <button class="btn btn-ghost btn-small" data-deny-premium="${p.id}">${t('admin.deny')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
+  html += `<div class="section-block"><h2>${t('admin.approved_heading')}</h2>`;
+  if (approved.length === 0){
+    html += `<p class="credits-note">${t('admin.no_approved')}</p>`;
+  } else {
+    approved.forEach(p => {
+      html += `
+        <div class="notify-row">
+          <span class="req-name">${escapeHTML(p.display_name)} — ${escapeHTML(p.email)}</span>
+          <div class="notify-actions">
+            <button class="icon-btn" data-revoke-premium="${p.id}">${t('admin.revoke')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
+  content.innerHTML = html;
+  wireEvents();
+}
+
+function wireEvents(){
+  content.querySelectorAll('[data-approve-premium]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await supabaseClient.from('profiles').update({ is_premium: true, premium_status: 'approved' }).eq('id', btn.dataset.approvePremium);
+    loadAdmin();
+  }));
+  content.querySelectorAll('[data-deny-premium]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await supabaseClient.from('profiles').update({ is_premium: false, premium_status: 'denied' }).eq('id', btn.dataset.denyPremium);
+    loadAdmin();
+  }));
+  content.querySelectorAll('[data-revoke-premium]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm(t('admin.revoke_confirm'))) return;
+    await supabaseClient.from('profiles').update({ is_premium: false, premium_status: 'denied' }).eq('id', btn.dataset.revokePremium);
+    loadAdmin();
+  }));
+}
+
+async function init(){
+  if (!supabaseClient){
+    renderLoggedOut();
+    return;
+  }
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  currentUser = session?.user || null;
+  renderNav();
+  if (!currentUser){
+    renderLoggedOut();
+    return;
+  }
+  isAdmin = (currentUser.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  if (!isAdmin){
+    renderNotAuthorized();
+    return;
+  }
+  await loadAdmin();
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    currentUser = session?.user || null;
+    renderNav();
+    if (!currentUser){ renderLoggedOut(); return; }
+    isAdmin = (currentUser.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (!isAdmin){ renderNotAuthorized(); return; }
+    await loadAdmin();
+  });
+}
+init();
+</script>
+
+</body>
+</html>

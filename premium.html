@@ -108,6 +108,19 @@ function renderAlreadyPremium(){
   `;
 }
 
+function renderPendingApproval(){
+  card.innerHTML = `
+    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <div class="premium-already">
+      <h2 style="font-size:20px;margin-bottom:6px;">⏳ ${t('premium.pending_title')}</h2>
+      <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.pending_sub')}</p>
+    </div>
+    <div class="hero-ctas" style="margin-top:20px;">
+      <a class="btn btn-ghost" href="feed.html">${t('premium.go_to_feed')}</a>
+    </div>
+  `;
+}
+
 const PAYMENT_EMAIL = 'aolbr_mail@yahoo.com.br';
 
 function renderPaymentForm(user){
@@ -130,6 +143,7 @@ function renderPaymentForm(user){
     <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
     <h1>${t('premium.heading')}</h1>
     <p class="auth-sub">${t('premium.sub')}</p>
+    ${currentProfile && currentProfile.premium_status === 'denied' ? `<p class="form-msg error" style="margin-bottom:10px;">${t('premium.denied_note')}</p>` : ''}
     <div class="premium-price">$2 <small>${t('premium.price_note')}</small></div>
     <ul class="premium-features">
       <li>${t('premium.li1')}</li>
@@ -172,14 +186,14 @@ function wirePaypalCheckout(user){
     confirmBtn.disabled = true;
     msg.textContent = t('premium.confirming');
     msg.className = 'form-msg';
-    const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
+    const { error } = await supabaseClient.from('profiles').update({ premium_status: 'pending' }).eq('id', user.id);
     confirmBtn.disabled = false;
     if (error){
       msg.textContent = `${t('premium.err_account_update')} (${error.message}).`;
       msg.className = 'form-msg error';
       return;
     }
-    renderSuccess(null);
+    renderPendingApproval();
   });
 }
 
@@ -201,28 +215,15 @@ function wirePixCheckout(user){
     confirmBtn.disabled = true;
     msg.textContent = t('premium.confirming');
     msg.className = 'form-msg';
-    const { error } = await supabaseClient.from('profiles').update({ is_premium: true }).eq('id', user.id);
+    const { error } = await supabaseClient.from('profiles').update({ premium_status: 'pending' }).eq('id', user.id);
     confirmBtn.disabled = false;
     if (error){
       msg.textContent = `${t('premium.err_account_update')} (${error.message}).`;
       msg.className = 'form-msg error';
       return;
     }
-    renderSuccess(null);
+    renderPendingApproval();
   });
-}
-
-function renderSuccess(orderId){
-  card.innerHTML = `
-    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
-    <div class="premium-success">
-      <h2>${t('premium.success_title')}</h2>
-      <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.already_sub')}${orderId ? ' ' + t('premium.order_id') + ' ' + escapeHTML(orderId) : ''}</p>
-    </div>
-    <div class="hero-ctas" style="margin-top:20px;">
-      <a class="btn btn-primary" href="feed.html">${t('premium.start_new')}</a>
-    </div>
-  `;
 }
 
 let currentState = 'loading';
@@ -230,6 +231,7 @@ let stateArgs = null;
 function renderForState(){
   if (currentState === 'loggedOut') renderLoggedOut();
   else if (currentState === 'alreadyPremium') renderAlreadyPremium();
+  else if (currentState === 'pendingApproval') renderPendingApproval();
   else if (currentState === 'paymentForm') renderPaymentForm(stateArgs);
 }
 
@@ -247,7 +249,7 @@ async function init(){
     renderLoggedOut();
     return;
   }
-  const { data: profile, error } = await supabaseClient.from('profiles').select('is_premium').eq('id', user.id).single();
+  const { data: profile, error } = await supabaseClient.from('profiles').select('is_premium, premium_status').eq('id', user.id).single();
   if (error){
     card.innerHTML = `<a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
     return;
@@ -256,6 +258,11 @@ async function init(){
   if (profile && profile.is_premium){
     currentState = 'alreadyPremium';
     renderAlreadyPremium();
+    return;
+  }
+  if (profile && profile.premium_status === 'pending'){
+    currentState = 'pendingApproval';
+    renderPendingApproval();
     return;
   }
   currentState = 'paymentForm';

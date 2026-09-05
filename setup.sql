@@ -1422,3 +1422,73 @@ create policy "Team can add activity links" on project_activity_links
 drop policy if exists "Team can delete activity links" on project_activity_links;
 create policy "Team can delete activity links" on project_activity_links
   for delete using (public.is_project_team_member(project_id));
+
+-- ---------------------------------------------------------------------------
+-- A finished project no longer counts against the free "1 project" limit,
+-- so a manager who wraps one up can start a new one without Premium.
+-- ---------------------------------------------------------------------------
+create or replace function public.enforce_project_limit()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  is_prem boolean;
+  existing_count int;
+begin
+  select coalesce(is_premium, false) into is_prem from public.profiles where id = new.owner_id;
+  select count(*) into existing_count from public.projects where owner_id = new.owner_id and stage <> 'finish';
+  if not coalesce(is_prem, false) and existing_count >= 1 then
+    raise exception 'Free plan is limited to 1 active project. Finish your current one, or upgrade to Premium to add more.';
+  end if;
+  return new;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- PREMIUM APPROVAL: a self-reported PayPal/PIX payment on premium.html no
+-- longer flips is_premium on its own — it only requests it (premium_status
+-- = 'pending'). Only the site admin (aolbr_mail@yahoo.com.br) can actually
+-- approve (is_premium = true) or deny a request, enforced server-side by a
+-- trigger, not just by hiding the button in the UI. See admin.html.
+-- ---------------------------------------------------------------------------
+alter table profiles add column if not exists premium_status text not null default 'none';
+alter table profiles drop constraint if exists profiles_premium_status_check;
+alter table profiles add constraint profiles_premium_status_check
+  check (premium_status in ('none','pending','approved','denied'));
+
+update profiles set premium_status = 'approved' where is_premium = true and premium_status = 'none';
+
+create or replace function public.guard_profile_updates()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_admin boolean;
+begin
+  select (email = 'aolbr_mail@yahoo.com.br') into is_admin from public.profiles where id = auth.uid();
+  if not coalesce(is_admin, false) then
+    -- Non-admins can never flip is_premium themselves, and can only ever
+    -- move their own premium_status to 'pending' (a new request) — never
+    -- straight to 'approved'/'denied'.
+    new.is_premium = old.is_premium;
+    if new.premium_status is distinct from old.premium_status and new.premium_status <> 'pending' then
+      new.premium_status = old.premium_status;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_guard_profile_updates on profiles;
+create trigger trg_guard_profile_updates
+  before update on profiles
+  for each row execute function public.guard_profile_updates();
+
+drop policy if exists "Admin can update any profile" on profiles;
+create policy "Admin can update any profile" on profiles
+  for update using (
+    exists (select 1 from public.profiles admin where admin.id = auth.uid() and admin.email = 'aolbr_mail@yahoo.com.br')
+  );
