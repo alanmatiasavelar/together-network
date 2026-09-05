@@ -191,6 +191,7 @@
   }
   .chip.type-profit{background:#FFF1E7;border-color:#F3D2B8;color:var(--orange-deep);}
   .chip.type-nonprofit{background:#EAF3FB;border-color:#CFE3F3;color:var(--blue-deep);}
+  .chip.overdue{background:#FBEAEA;border-color:#F0C6C3;color:#B3261E;}
   .feed-card h3{font-size:19px;}
   .feed-card .pitch{font-size:14.5px;color:var(--ink-soft);flex:1;}
   .feed-card-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid var(--line);}

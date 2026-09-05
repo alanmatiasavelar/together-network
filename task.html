@@ -189,16 +189,15 @@ function renderDocuments(){
 function render(){
   const assignees = (task.task_assignees || []).map(a => a.profiles?.display_name || '?');
   const dtLabel = task.due_date ? escapeHTML(task.due_date) : null;
+  const isOverdue = task.due_date && !['finished', 'approved'].includes(task.status) && task.due_date < new Date().toISOString().slice(0, 10);
 
   const html = `
     <p class="eyebrow">${t('task.workflow_title')}</p>
     <h1 style="margin-top:8px;">${escapeHTML(task.title)}</h1>
     ${task.description ? `<p class="project-desc">${escapeHTML(task.description)}</p>` : ''}
     <div class="card-row" style="margin:14px 0;">
-      <select class="stage-select" data-task-status data-task-id="${task.id}" aria-label="${t('task.change_status')}">
-        ${['created','working','finished','approved'].map(c => `<option value="${c}" ${c === task.status ? 'selected' : ''}>${t('project.col_' + c)}</option>`).join('')}
-      </select>
-      ${dtLabel ? `<span class="chip">${t('project.due')} ${dtLabel}</span>` : ''}
+      <span class="chip status-badge ${task.status}">${t('project.col_' + task.status)}</span>
+      ${dtLabel ? `<span class="chip${isOverdue ? ' overdue' : ''}">${t('project.due')} ${dtLabel}${isOverdue ? ' · ' + t('task.overdue') : ''}</span>` : ''}
       ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
     </div>
     <p style="font-size:13px;color:var(--ink-soft);margin-bottom:28px;">
@@ -213,6 +212,13 @@ function render(){
     <div class="section-block">
       <h2>${t('task.documents_heading')}</h2>
       ${renderDocuments()}
+    </div>
+
+    <div class="section-block">
+      <h2>${t('task.change_status_heading')}</h2>
+      <select class="stage-select" data-task-status data-task-id="${task.id}" aria-label="${t('task.change_status')}">
+        ${['created','working','finished','approved'].map(c => `<option value="${c}" ${c === task.status ? 'selected' : ''}>${t('project.col_' + c)}</option>`).join('')}
+      </select>
     </div>
   `;
   content.innerHTML = html;
