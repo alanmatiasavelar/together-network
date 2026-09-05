@@ -39,6 +39,10 @@
       <label><span data-i18n="signup.name">Name</span><input type="text" required name="name" autocomplete="name"></label>
       <label><span data-i18n="signup.email">Email</span><input type="email" required name="email" autocomplete="email"></label>
       <label><span data-i18n="signup.password">Password</span><input type="password" required name="password" minlength="6" autocomplete="new-password"></label>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;font-weight:400;">
+        <input type="checkbox" required name="agree_terms" style="width:auto;margin-top:3px;">
+        <span><span data-i18n="signup.agree_terms">I agree to the</span> <a href="terms.html" target="_blank" rel="noopener noreferrer" data-i18n="signup.terms_link">Terms of Use</a>.</span>
+      </label>
       <button class="btn btn-primary" type="submit" data-i18n="signup.cta">Create account</button>
       <p class="form-msg" id="signupMsg"></p>
     </form>
@@ -51,6 +55,7 @@
   <div class="wrap footer-inner">
     <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
     <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="terms.html" data-i18n="footer.terms">Terms of Use</a>
     <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
   </div>
 </footer>
@@ -80,9 +85,14 @@
       msg.className = 'form-msg error';
       return;
     }
+    const fd = new FormData(e.target);
+    if (!fd.get('agree_terms')){
+      msg.textContent = t('signup.err_must_agree');
+      msg.className = 'form-msg error';
+      return;
+    }
     const submitBtn = e.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
-    const fd = new FormData(e.target);
     const { data, error } = await supabaseClient.auth.signUp({
       email: fd.get('email'),
       password: fd.get('password'),
