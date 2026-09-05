@@ -227,7 +227,11 @@ create trigger enforce_project_limit_trigger
 -- instead of pasting an image URL. Anyone can view a file (the Learn More
 -- page is public); only a project's own owner can upload into or delete from
 -- that project's folder, enforced by matching the file's path prefix against
--- projects the requester actually owns.
+-- projects the requester actually owns. EXCEPTION: files named "feed-*" are
+-- team feed post images (project.html, any team member can post there), so
+-- those are opened up to the whole team, not just the owner — see the
+-- "Team can upload/update/delete post images" policies below for the actual,
+-- current rule (this comment describes the general/default case only).
 -- ---------------------------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('project-post-images', 'project-post-images', true)
@@ -237,36 +241,51 @@ drop policy if exists "Public can view post images" on storage.objects;
 create policy "Public can view post images" on storage.objects
   for select using (bucket_id = 'project-post-images');
 
+-- Team feed images ("feed-*") are postable by any team member; everything
+-- else in a project's folder (bare post images, "qr-*", "cover-*") stays
+-- owner-only.
 drop policy if exists "Owners can upload post images" on storage.objects;
-create policy "Owners can upload post images" on storage.objects
+drop policy if exists "Team can upload post images" on storage.objects;
+create policy "Team can upload post images" on storage.objects
   for insert with check (
     bucket_id = 'project-post-images'
     and exists (
       select 1 from projects
       where projects.id::text = (storage.foldername(name))[1]
-        and projects.owner_id = auth.uid()
+        and (
+          projects.owner_id = auth.uid()
+          or (storage.filename(name) like 'feed-%' and public.is_project_team_member(projects.id))
+        )
     )
   );
 
 drop policy if exists "Owners can update post images" on storage.objects;
-create policy "Owners can update post images" on storage.objects
+drop policy if exists "Team can update post images" on storage.objects;
+create policy "Team can update post images" on storage.objects
   for update using (
     bucket_id = 'project-post-images'
     and exists (
       select 1 from projects
       where projects.id::text = (storage.foldername(name))[1]
-        and projects.owner_id = auth.uid()
+        and (
+          projects.owner_id = auth.uid()
+          or (storage.filename(name) like 'feed-%' and public.is_project_team_member(projects.id))
+        )
     )
   );
 
 drop policy if exists "Owners can delete post images" on storage.objects;
-create policy "Owners can delete post images" on storage.objects
+drop policy if exists "Team can delete post images" on storage.objects;
+create policy "Team can delete post images" on storage.objects
   for delete using (
     bucket_id = 'project-post-images'
     and exists (
       select 1 from projects
       where projects.id::text = (storage.foldername(name))[1]
-        and projects.owner_id = auth.uid()
+        and (
+          projects.owner_id = auth.uid()
+          or (storage.filename(name) like 'feed-%' and public.is_project_team_member(projects.id))
+        )
     )
   );
 
