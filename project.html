@@ -95,7 +95,6 @@ function renderNav(){
   }
 }
 
-const IMAGE_URL_PATTERN = /^https:\/\//;
 const YOUTUBE_LINK_PATTERN = /^https:\/\/(www\.)?(youtube\.com|youtu\.be)\//;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 
@@ -103,6 +102,16 @@ async function uploadFeedImage(file){
   const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
   const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
   const path = `${projectId}/feed-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const { error } = await supabaseClient.storage.from('project-post-images').upload(path, file, { contentType: file.type });
+  if (error) throw error;
+  const { data } = supabaseClient.storage.from('project-post-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function uploadCoverImage(file){
+  const extMatch = /\.([a-zA-Z0-9]+)$/.exec(file.name || '');
+  const ext = (extMatch ? extMatch[1] : 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${projectId}/cover-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const { error } = await supabaseClient.storage.from('project-post-images').upload(path, file, { contentType: file.type });
   if (error) throw error;
   const { data } = supabaseClient.storage.from('project-post-images').getPublicUrl(path);
@@ -199,7 +208,20 @@ function render(){
       <details class="add-inline section-block">
         <summary>${t('project.edit_media')}</summary>
         <form id="mediaForm" class="auth-form">
-          <label>${t('project.image_url')}<input type="url" name="image_url" value="${escapeHTML(project.image_url || '')}" placeholder="https://..."></label>
+          <label>${t('project.image_upload')}
+            ${project.image_url ? `
+              <div style="margin:6px 0;">
+                <span class="credits-note">${t('learnmore.current_photo')}</span><br>
+                <img src="${escapeHTML(project.image_url)}" alt="" style="max-width:200px;border-radius:8px;margin-top:4px;">
+              </div>
+            ` : ''}
+            <input type="file" name="image_file" accept="image/*">
+            ${project.image_url ? `
+              <label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-top:8px;">
+                <input type="checkbox" name="remove_image" style="width:auto;"> ${t('learnmore.remove_image')}
+              </label>
+            ` : ''}
+          </label>
           <label>${t('project.youtube_link')}<input type="url" name="youtube_link" value="${escapeHTML(project.youtube_link || '')}" placeholder="https://youtube.com/watch?v=..."></label>
           <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
           <p class="form-msg" id="mediaMsg"></p>
@@ -944,13 +966,34 @@ function wireEvents(){
   if (mediaForm) mediaForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const msg = document.getElementById('mediaMsg');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
     msg.textContent = ''; msg.className = 'form-msg';
     const fd = new FormData(e.target);
-    const imageUrl = (fd.get('image_url') || '').trim();
     const ytLink = (fd.get('youtube_link') || '').trim();
-    if (imageUrl && !IMAGE_URL_PATTERN.test(imageUrl)){ msg.textContent = t('project.image_url_err'); msg.className = 'form-msg error'; return; }
+    const file = e.target.querySelector('input[name="image_file"]').files[0];
+    const removeImage = fd.get('remove_image') === 'on';
     if (ytLink && !YOUTUBE_LINK_PATTERN.test(ytLink)){ msg.textContent = t('project.youtube_err'); msg.className = 'form-msg error'; return; }
-    const { error } = await supabaseClient.from('projects').update({ image_url: imageUrl || null, youtube_link: ytLink || null }).eq('id', projectId);
+
+    let imageUrl = project.image_url || null;
+    if (removeImage) imageUrl = null;
+
+    if (file && file.size > 0){
+      if (!file.type.startsWith('image/')){ msg.textContent = t('learnmore.file_not_image'); msg.className = 'form-msg error'; return; }
+      if (file.size > MAX_IMAGE_BYTES){ msg.textContent = t('learnmore.file_too_large'); msg.className = 'form-msg error'; return; }
+      submitBtn.disabled = true;
+      msg.textContent = t('learnmore.uploading');
+      try {
+        imageUrl = await uploadCoverImage(file);
+      } catch (err) {
+        msg.textContent = err.message || String(err);
+        msg.className = 'form-msg error';
+        submitBtn.disabled = false;
+        return;
+      }
+    }
+
+    const { error } = await supabaseClient.from('projects').update({ image_url: imageUrl, youtube_link: ytLink || null }).eq('id', projectId);
+    submitBtn.disabled = false;
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
     loadProject();
   });
