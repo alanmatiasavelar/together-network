@@ -66,9 +66,11 @@ const projectId = params.get('id');
 const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
+const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule'];
+
 let currentUser = null;
 let project = null;
-let activeTab = 'feed';
+let activeTab = VALID_TABS.includes(params.get('tab')) ? params.get('tab') : 'feed';
 let editingGoalId = null;
 let editingReqId = null;
 let editingTaskId = null;

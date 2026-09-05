@@ -113,8 +113,8 @@ async function loadTask(){
     return;
   }
   task = data;
-  document.getElementById('backLink').href = `project.html?id=${task.project_id}`;
-  document.getElementById('backLink').textContent = t('task.back_to_project');
+  document.getElementById('backLink').href = `project.html?id=${task.project_id}&tab=tasks`;
+  document.getElementById('backLink').textContent = t('task.back_to_tasks');
 
   const [{ data: historyData }, { data: docsData }] = await Promise.all([
     supabaseClient.from('task_status_history').select('*').eq('task_id', taskId).order('changed_at', { ascending: true }),
