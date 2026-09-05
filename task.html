@@ -195,7 +195,9 @@ function render(){
     <h1 style="margin-top:8px;">${escapeHTML(task.title)}</h1>
     ${task.description ? `<p class="project-desc">${escapeHTML(task.description)}</p>` : ''}
     <div class="card-row" style="margin:14px 0;">
-      <span class="status-badge ${task.status}">${t('project.col_' + task.status)}</span>
+      <select class="stage-select" data-task-status data-task-id="${task.id}" aria-label="${t('task.change_status')}">
+        ${['created','working','finished','approved'].map(c => `<option value="${c}" ${c === task.status ? 'selected' : ''}>${t('project.col_' + c)}</option>`).join('')}
+      </select>
       ${dtLabel ? `<span class="chip">${t('project.due')} ${dtLabel}</span>` : ''}
       ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
     </div>
@@ -218,6 +220,12 @@ function render(){
 }
 
 function wireEvents(){
+  content.querySelectorAll('[data-task-status]').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    await supabaseClient.from('project_tasks').update({ status: sel.value }).eq('id', sel.dataset.taskId);
+    loadTask();
+  }));
+
   const docForm = document.getElementById('docForm');
   if (docForm) docForm.addEventListener('submit', async (e) => {
     e.preventDefault();
