@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -67,7 +68,7 @@ const projectId = params.get('id');
 const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
-const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule'];
+const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs'];
 
 let currentUser = null;
 let project = null;
@@ -79,6 +80,44 @@ let editingEventId = null;
 let editingFeedPostId = null;
 let editingCostId = null;
 let editingActivityId = null;
+let editingWbsId = null;
+let ganttZoom = 1;
+let wbsZoom = 1;
+
+const ZOOM_MIN = 0.5, ZOOM_MAX = 2.5, ZOOM_STEP = 0.25;
+
+function clampZoom(z){
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+function renderChartToolbar(prefix, zoom){
+  return `
+    <div class="chart-toolbar">
+      <div class="zoom-group">
+        <button type="button" class="zoom-btn" data-zoom-out="${prefix}" aria-label="${t('chart.zoom_out')}">−</button>
+        <span class="zoom-level">${Math.round(zoom * 100)}%</span>
+        <button type="button" class="zoom-btn" data-zoom-in="${prefix}" aria-label="${t('chart.zoom_in')}">+</button>
+      </div>
+      <button type="button" class="btn btn-ghost btn-small" data-zoom-reset="${prefix}">${t('chart.zoom_reset')}</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>
+    </div>
+  `;
+}
+
+async function exportChartToPng(scrollElId, filename){
+  const el = document.getElementById(scrollElId);
+  if (!el || typeof html2canvas !== 'function') return;
+  const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
+  canvas.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+}
 
 function renderNav(){
   if (currentUser){
@@ -144,7 +183,8 @@ async function loadProject(){
       project_events(*, event_rsvps(user_id, status)),
       project_costs(*),
       project_activities(*),
-      project_activity_links(*)`)
+      project_activity_links(*),
+      project_wbs_items(*)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -280,6 +320,7 @@ function render(){
       <button data-tab="events" class="${activeTab === 'events' ? 'active' : ''}">${t('project.tab_events')}</button>
       <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
       <button data-tab="schedule" class="${activeTab === 'schedule' ? 'active' : ''}">${t('project.tab_schedule')}</button>
+      <button data-tab="wbs" class="${activeTab === 'wbs' ? 'active' : ''}">${t('project.tab_wbs')}</button>
       <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
@@ -290,6 +331,7 @@ function render(){
     <div class="tab-panel" data-panel="events" ${activeTab !== 'events' ? 'hidden' : ''}>${renderEventsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="costs" ${activeTab !== 'costs' ? 'hidden' : ''}>${renderCostsPanel()}</div>
     <div class="tab-panel" data-panel="schedule" ${activeTab !== 'schedule' ? 'hidden' : ''}>${renderSchedulePanel()}</div>
+    <div class="tab-panel" data-panel="wbs" ${activeTab !== 'wbs' ? 'hidden' : ''}>${renderWbsPanel()}</div>
   `;
 
   // --- Coordination ---
@@ -585,7 +627,7 @@ function ganttFmtDate(ms){
 }
 const GANTT_DAY_MS = 86400000;
 
-function renderGanttChart(activities, links){
+function renderGanttChart(activities, links, zoom){
   if (activities.length === 0) return `<p class="credits-note">${t('project.no_activities')}</p>`;
 
   let minDate = ganttParseDate(activities[0].start_date);
@@ -598,7 +640,7 @@ function renderGanttChart(activities, links){
   maxDate += GANTT_DAY_MS;
   const totalDays = Math.round((maxDate - minDate) / GANTT_DAY_MS) + 1;
 
-  const dayWidth = totalDays > 60 ? 18 : totalDays > 30 ? 24 : 32;
+  const dayWidth = (totalDays > 60 ? 18 : totalDays > 30 ? 24 : 32) * zoom;
   const rowHeight = 42;
   const chartWidth = totalDays * dayWidth;
   const chartHeight = activities.length * rowHeight;
@@ -650,7 +692,7 @@ function renderGanttChart(activities, links){
   });
 
   return `
-    <div class="gantt-scroll">
+    <div class="gantt-scroll" id="ganttScroll">
       <div class="gantt-header" style="width:${chartWidth}px;">${ticksHtml}</div>
       <div class="gantt-body" style="width:${chartWidth}px;height:${chartHeight}px;">
         ${barsHtml}
@@ -671,7 +713,8 @@ function renderSchedulePanel(){
   const activities = (project.project_activities || []).slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
   const links = project.project_activity_links || [];
 
-  let html = `<div id="ganttWrap">${renderGanttChart(activities, links)}</div>`;
+  let html = renderChartToolbar('gantt', ganttZoom);
+  html += `<div id="ganttWrap">${renderGanttChart(activities, links, ganttZoom)}</div>`;
 
   html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.activities_heading')}</h3>`;
   if (activities.length === 0) html += `<p class="credits-note">${t('project.no_activities')}</p>`;
@@ -746,6 +789,144 @@ function renderSchedulePanel(){
     `;
   }
   html += `</div>`;
+
+  return html;
+}
+
+function layoutWbsTree(items, zoom){
+  const nodeW = 168 * zoom, nodeH = 56 * zoom, gapX = 26 * zoom, gapY = 64 * zoom;
+  const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
+  const roots = [];
+  byId.forEach(node => {
+    if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
+    else roots.push(node);
+  });
+  const byCreated = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+  byId.forEach(node => node.children.sort(byCreated));
+  roots.sort(byCreated);
+
+  let nextX = 0;
+  function place(node, depth){
+    node.depth = depth;
+    if (node.children.length === 0){
+      node.x = nextX * (nodeW + gapX);
+      nextX++;
+    } else {
+      node.children.forEach(c => place(c, depth + 1));
+      const xs = node.children.map(c => c.x);
+      node.x = (Math.min(...xs) + Math.max(...xs)) / 2;
+    }
+    node.y = depth * (nodeH + gapY);
+  }
+  roots.forEach(r => place(r, 0));
+
+  const nodes = [...byId.values()];
+  const width = nodes.length ? Math.max(...nodes.map(n => n.x)) + nodeW + 20 : 0;
+  const height = nodes.length ? Math.max(...nodes.map(n => n.y)) + nodeH + 20 : 0;
+  return { nodes, width, height, nodeW, nodeH };
+}
+
+function renderWbsDiagram(items, zoom){
+  if (items.length === 0) return `<p class="credits-note">${t('project.wbs_no_items')}</p>`;
+
+  const { nodes, width, height, nodeW, nodeH } = layoutWbsTree(items, zoom);
+  const byId = new Map(nodes.map(n => [n.id, n]));
+
+  let boxesHtml = '';
+  let linksHtml = '';
+  nodes.forEach(n => {
+    boxesHtml += `
+      <div class="wbs-node ${n.parent_id ? '' : 'is-root'}" style="left:${n.x}px;top:${n.y}px;width:${nodeW}px;height:${nodeH}px;" title="${escapeHTML(n.title)}${n.description ? ' — ' + escapeHTML(n.description) : ''}">
+        <div class="wbs-node-title" style="font-size:${Math.round(12.5 * zoom)}px;">${escapeHTML(n.title)}</div>
+        ${n.description ? `<div class="wbs-node-desc" style="font-size:${Math.round(10.5 * zoom)}px;">${escapeHTML(n.description)}</div>` : ''}
+      </div>
+    `;
+    if (n.parent_id && byId.has(n.parent_id)){
+      const p = byId.get(n.parent_id);
+      const x1 = p.x + nodeW / 2, y1 = p.y + nodeH;
+      const x2 = n.x + nodeW / 2, y2 = n.y;
+      const midY = (y1 + y2) / 2;
+      linksHtml += `<path d="M${x1},${y1} L${x1},${midY} L${x2},${midY} L${x2},${y2}" class="wbs-link"/>`;
+    }
+  });
+
+  return `
+    <div class="wbs-scroll" id="wbsScroll">
+      <div class="wbs-canvas" style="width:${width}px;height:${height}px;">
+        ${boxesHtml}
+        <svg class="wbs-svg" width="${width}" height="${height}">${linksHtml}</svg>
+      </div>
+    </div>
+  `;
+}
+
+function renderWbsPanel(){
+  const items = project.project_wbs_items || [];
+  const byId = new Map(items.map(i => [i.id, i]));
+  const sorted = items.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  let html = renderChartToolbar('wbs', wbsZoom);
+  html += `<div id="wbsWrap">${renderWbsDiagram(items, wbsZoom)}</div>`;
+
+  html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.wbs_list_heading')}</h3>`;
+  if (sorted.length === 0){
+    html += `<p class="credits-note">${t('project.wbs_no_items')}</p>`;
+  } else {
+    sorted.forEach(item => {
+      const depth = (() => {
+        let d = 0, cur = item;
+        while (cur.parent_id && byId.has(cur.parent_id)){ d++; cur = byId.get(cur.parent_id); }
+        return d;
+      })();
+      html += `
+        <div class="wbs-list-row" style="padding-left:${depth * 20}px;">
+          <div>
+            <div class="wbs-list-title">${depth > 0 ? '↳ ' : ''}${escapeHTML(item.title)}</div>
+            ${item.description ? `<div class="wbs-list-desc">${escapeHTML(item.description)}</div>` : ''}
+          </div>
+          <div class="item-actions">
+            <button class="icon-btn" data-edit-wbs="${item.id}">${t('common.edit')}</button>
+            <button class="icon-btn" data-delete-wbs="${item.id}">${t('common.delete')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  if (currentUser){
+    const editingItem = editingWbsId ? byId.get(editingWbsId) : null;
+    // Exclude the item itself and its descendants from the parent dropdown
+    // when editing — picking one would create a cycle in the tree.
+    const excluded = new Set(editingWbsId ? [editingWbsId] : []);
+    if (editingWbsId){
+      let added = true;
+      while (added){
+        added = false;
+        items.forEach(i => { if (i.parent_id && excluded.has(i.parent_id) && !excluded.has(i.id)){ excluded.add(i.id); added = true; } });
+      }
+    }
+    const parentOptions = items
+      .filter(i => !excluded.has(i.id))
+      .map(i => `<option value="${i.id}" ${editingItem && editingItem.parent_id === i.id ? 'selected' : ''}>${escapeHTML(i.title)}</option>`)
+      .join('');
+    html += `
+      <details class="add-inline" ${editingWbsId ? 'open' : ''} style="margin-top:14px;">
+        <summary>${editingWbsId ? t('common.edit') : t('project.wbs_add')}</summary>
+        <form id="wbsForm" class="auth-form" data-editing="${editingWbsId || ''}">
+          <label>${t('project.wbs_title_label')}<input type="text" required name="title" maxlength="140" value="${editingItem ? escapeHTML(editingItem.title) : ''}"></label>
+          <label>${t('project.wbs_desc_label')}<textarea name="description" rows="2" maxlength="300">${editingItem ? escapeHTML(editingItem.description || '') : ''}</textarea></label>
+          <label>${t('project.wbs_parent_label')}
+            <select name="parent_id">
+              <option value="">${t('project.wbs_top_level')}</option>
+              ${parentOptions}
+            </select>
+          </label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingWbsId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="wbsMsg"></p>
+        </form>
+      </details>
+    `;
+  }
 
   return html;
 }
@@ -1373,6 +1554,58 @@ function wireEvents(){
   content.querySelectorAll('[data-delete-link]').forEach(btn => btn.addEventListener('click', async () => {
     await supabaseClient.from('project_activity_links').delete().eq('id', btn.dataset.deleteLink);
     loadProject();
+  }));
+
+  const wbsForm = document.getElementById('wbsForm');
+  if (wbsForm) wbsForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('wbsMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const title = (fd.get('title') || '').trim();
+    const description = (fd.get('description') || '').trim();
+    const parentId = fd.get('parent_id') || null;
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_wbs_items').update({ title, description: description || null, parent_id: parentId }).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_wbs_items').insert({ project_id: projectId, title, description: description || null, parent_id: parentId }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingWbsId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-wbs]').forEach(btn => btn.addEventListener('click', () => {
+    editingWbsId = btn.dataset.editWbs;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-wbs]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm(t('project.wbs_delete_confirm'))) return;
+    await supabaseClient.from('project_wbs_items').delete().eq('id', btn.dataset.deleteWbs);
+    loadProject();
+  }));
+
+  content.querySelectorAll('[data-zoom-in]').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.zoomIn === 'gantt') ganttZoom = clampZoom(ganttZoom + ZOOM_STEP);
+    else wbsZoom = clampZoom(wbsZoom + ZOOM_STEP);
+    render();
+  }));
+  content.querySelectorAll('[data-zoom-out]').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.zoomOut === 'gantt') ganttZoom = clampZoom(ganttZoom - ZOOM_STEP);
+    else wbsZoom = clampZoom(wbsZoom - ZOOM_STEP);
+    render();
+  }));
+  content.querySelectorAll('[data-zoom-reset]').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.zoomReset === 'gantt') ganttZoom = 1;
+    else wbsZoom = 1;
+    render();
+  }));
+  content.querySelectorAll('[data-export-png]').forEach(btn => btn.addEventListener('click', () => {
+    const prefix = btn.dataset.exportPng;
+    const projectTitle = (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_');
+    if (prefix === 'gantt') exportChartToPng('ganttScroll', `${projectTitle}-gantt.png`);
+    else exportChartToPng('wbsScroll', `${projectTitle}-wbs.png`);
   }));
 
 }

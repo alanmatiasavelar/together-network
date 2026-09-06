@@ -1424,6 +1424,44 @@ create policy "Team can delete activity links" on project_activity_links
   for delete using (public.is_project_team_member(project_id));
 
 -- ---------------------------------------------------------------------------
+-- WORK BREAKDOWN STRUCTURE: a hierarchical decomposition of project scope
+-- into work packages, shown as a tree diagram on project.html's WBS tab.
+-- Any team member can manage this, same openness as activities/tasks.
+-- ---------------------------------------------------------------------------
+create table if not exists project_wbs_items (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  parent_id uuid references project_wbs_items(id) on delete cascade,
+  title text not null,
+  description text,
+  created_by uuid not null default auth.uid(),
+  created_by_name text not null default public.current_display_name(),
+  created_at timestamptz not null default now(),
+  constraint project_wbs_items_no_self_parent check (parent_id is distinct from id)
+);
+
+create index if not exists project_wbs_items_project_id_idx on project_wbs_items (project_id);
+create index if not exists project_wbs_items_parent_id_idx on project_wbs_items (parent_id);
+
+alter table project_wbs_items enable row level security;
+
+drop policy if exists "Team can read wbs items" on project_wbs_items;
+create policy "Team can read wbs items" on project_wbs_items
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add wbs items" on project_wbs_items;
+create policy "Team can add wbs items" on project_wbs_items
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update wbs items" on project_wbs_items;
+create policy "Team can update wbs items" on project_wbs_items
+  for update using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete wbs items" on project_wbs_items;
+create policy "Team can delete wbs items" on project_wbs_items
+  for delete using (public.is_project_team_member(project_id));
+
+-- ---------------------------------------------------------------------------
 -- A finished project no longer counts against the free "1 project" limit,
 -- so a manager who wraps one up can start a new one without Premium.
 -- ---------------------------------------------------------------------------
