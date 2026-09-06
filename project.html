@@ -801,9 +801,9 @@ function layoutWbsTree(items, zoom){
     if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
     else roots.push(node);
   });
-  const byCreated = (a, b) => new Date(a.created_at) - new Date(b.created_at);
-  byId.forEach(node => node.children.sort(byCreated));
-  roots.sort(byCreated);
+  const bySortOrder = (a, b) => (a.sort_order - b.sort_order) || (new Date(a.created_at) - new Date(b.created_at));
+  byId.forEach(node => node.children.sort(bySortOrder));
+  roots.sort(bySortOrder);
 
   let nextX = 0;
   function place(node, depth){
@@ -860,31 +860,71 @@ function renderWbsDiagram(items, zoom){
   `;
 }
 
+function flattenWbsTree(items){
+  const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
+  const roots = [];
+  byId.forEach(node => {
+    if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
+    else roots.push(node);
+  });
+  const bySortOrder = (a, b) => (a.sort_order - b.sort_order) || (new Date(a.created_at) - new Date(b.created_at));
+  byId.forEach(node => node.children.sort(bySortOrder));
+  roots.sort(bySortOrder);
+
+  const out = [];
+  function walk(node, depth, siblings){
+    const siblingIndex = siblings.indexOf(node);
+    out.push({ ...node, depth, isFirst: siblingIndex === 0, isLast: siblingIndex === siblings.length - 1 });
+    node.children.forEach(c => walk(c, depth + 1, node.children));
+  }
+  roots.forEach(r => walk(r, 0, roots));
+  return out;
+}
+
+function nextWbsSortOrder(parentId, excludeId){
+  const siblings = (project.project_wbs_items || []).filter(i => (i.parent_id || null) === (parentId || null) && i.id !== excludeId);
+  return siblings.length ? Math.max(...siblings.map(s => s.sort_order || 0)) + 1 : 0;
+}
+
+async function moveWbsItem(id, direction){
+  const items = project.project_wbs_items || [];
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  const siblings = items
+    .filter(i => (i.parent_id || null) === (item.parent_id || null))
+    .sort((a, b) => (a.sort_order - b.sort_order) || (new Date(a.created_at) - new Date(b.created_at)));
+  const idx = siblings.findIndex(i => i.id === id);
+  const swapWith = direction === 'up' ? siblings[idx - 1] : siblings[idx + 1];
+  if (!swapWith) return;
+  await Promise.all([
+    supabaseClient.from('project_wbs_items').update({ sort_order: swapWith.sort_order }).eq('id', item.id),
+    supabaseClient.from('project_wbs_items').update({ sort_order: item.sort_order }).eq('id', swapWith.id)
+  ]);
+  loadProject();
+}
+
 function renderWbsPanel(){
   const items = project.project_wbs_items || [];
   const byId = new Map(items.map(i => [i.id, i]));
-  const sorted = items.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const flat = flattenWbsTree(items);
 
   let html = renderChartToolbar('wbs', wbsZoom);
   html += `<div id="wbsWrap">${renderWbsDiagram(items, wbsZoom)}</div>`;
 
   html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.wbs_list_heading')}</h3>`;
-  if (sorted.length === 0){
+  if (flat.length === 0){
     html += `<p class="credits-note">${t('project.wbs_no_items')}</p>`;
   } else {
-    sorted.forEach(item => {
-      const depth = (() => {
-        let d = 0, cur = item;
-        while (cur.parent_id && byId.has(cur.parent_id)){ d++; cur = byId.get(cur.parent_id); }
-        return d;
-      })();
+    flat.forEach(item => {
       html += `
-        <div class="wbs-list-row" style="padding-left:${depth * 20}px;">
+        <div class="wbs-list-row" style="padding-left:${item.depth * 20}px;">
           <div>
-            <div class="wbs-list-title">${depth > 0 ? '↳ ' : ''}${escapeHTML(item.title)}</div>
+            <div class="wbs-list-title">${item.depth > 0 ? '↳ ' : ''}${escapeHTML(item.title)}</div>
             ${item.description ? `<div class="wbs-list-desc">${escapeHTML(item.description)}</div>` : ''}
           </div>
           <div class="item-actions">
+            <button class="icon-btn" data-move-wbs-up="${item.id}" ${item.isFirst ? 'disabled' : ''} aria-label="${t('project.wbs_move_up')}">▲</button>
+            <button class="icon-btn" data-move-wbs-down="${item.id}" ${item.isLast ? 'disabled' : ''} aria-label="${t('project.wbs_move_down')}">▼</button>
             <button class="icon-btn" data-edit-wbs="${item.id}">${t('common.edit')}</button>
             <button class="icon-btn" data-delete-wbs="${item.id}">${t('common.delete')}</button>
           </div>
@@ -1566,11 +1606,20 @@ function wireEvents(){
     const description = (fd.get('description') || '').trim();
     const parentId = fd.get('parent_id') || null;
     const editingId = e.target.dataset.editing;
+    const existing = editingId ? (project.project_wbs_items || []).find(i => i.id === editingId) : null;
     let error;
     if (editingId){
-      ({ error } = await supabaseClient.from('project_wbs_items').update({ title, description: description || null, parent_id: parentId }).eq('id', editingId));
+      // Only re-append at the end of the sibling group if the parent actually changed —
+      // otherwise editing the title would silently bump the item to last place.
+      const parentChanged = existing && (existing.parent_id || null) !== (parentId || null);
+      const payload = { title, description: description || null, parent_id: parentId };
+      if (parentChanged) payload.sort_order = nextWbsSortOrder(parentId, editingId);
+      ({ error } = await supabaseClient.from('project_wbs_items').update(payload).eq('id', editingId));
     } else {
-      ({ error } = await supabaseClient.from('project_wbs_items').insert({ project_id: projectId, title, description: description || null, parent_id: parentId }));
+      ({ error } = await supabaseClient.from('project_wbs_items').insert({
+        project_id: projectId, title, description: description || null, parent_id: parentId,
+        sort_order: nextWbsSortOrder(parentId, null)
+      }));
     }
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
     editingWbsId = null;
@@ -1585,6 +1634,8 @@ function wireEvents(){
     await supabaseClient.from('project_wbs_items').delete().eq('id', btn.dataset.deleteWbs);
     loadProject();
   }));
+  content.querySelectorAll('[data-move-wbs-up]').forEach(btn => btn.addEventListener('click', () => moveWbsItem(btn.dataset.moveWbsUp, 'up')));
+  content.querySelectorAll('[data-move-wbs-down]').forEach(btn => btn.addEventListener('click', () => moveWbsItem(btn.dataset.moveWbsDown, 'down')));
 
   content.querySelectorAll('[data-zoom-in]').forEach(btn => btn.addEventListener('click', () => {
     if (btn.dataset.zoomIn === 'gantt') ganttZoom = clampZoom(ganttZoom + ZOOM_STEP);

@@ -789,6 +789,8 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
   border:none;background:none;cursor:pointer;color:var(--ink-soft);font-size:13px;padding:2px 6px;
 }
 .icon-btn:hover{color:#B3261E;}
+.icon-btn:disabled{opacity:0.3;cursor:not-allowed;color:var(--ink-soft);}
+.icon-btn:disabled:hover{color:var(--ink-soft);}
 .item-actions{display:flex;gap:4px;}
 
 /* ---------- Feed card: two links side by side ---------- */

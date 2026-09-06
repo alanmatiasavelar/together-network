@@ -1437,6 +1437,7 @@ create table if not exists project_wbs_items (
   created_by uuid not null default auth.uid(),
   created_by_name text not null default public.current_display_name(),
   created_at timestamptz not null default now(),
+  sort_order integer not null default 0,
   constraint project_wbs_items_no_self_parent check (parent_id is distinct from id)
 );
 
