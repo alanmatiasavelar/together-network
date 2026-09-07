@@ -73,6 +73,7 @@ let history = [];
 let documents = [];
 let signedUrls = {};
 let editingDocId = null;
+let wbsItems = [];
 
 const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -105,7 +106,7 @@ async function loadTask(){
   }
   const { data, error } = await supabaseClient
     .from('project_tasks')
-    .select('*, projects(id, title), task_assignees(user_id, profiles(display_name))')
+    .select('*, projects(id, title), task_assignees(user_id, profiles(display_name)), project_wbs_items(id, title)')
     .eq('id', taskId)
     .single();
 
@@ -117,12 +118,14 @@ async function loadTask(){
   document.getElementById('backLink').href = `project.html?id=${task.project_id}&tab=tasks`;
   document.getElementById('backLink').textContent = t('task.back_to_tasks');
 
-  const [{ data: historyData }, { data: docsData }] = await Promise.all([
+  const [{ data: historyData }, { data: docsData }, { data: wbsData }] = await Promise.all([
     supabaseClient.from('task_status_history').select('*').eq('task_id', taskId).order('changed_at', { ascending: true }),
-    supabaseClient.from('task_documents').select('*').eq('task_id', taskId).order('created_at', { ascending: false })
+    supabaseClient.from('task_documents').select('*').eq('task_id', taskId).order('created_at', { ascending: false }),
+    supabaseClient.from('project_wbs_items').select('id, title').eq('project_id', task.project_id).order('title', { ascending: true })
   ]);
   history = historyData || [];
   documents = docsData || [];
+  wbsItems = wbsData || [];
 
   signedUrls = {};
   await Promise.all(documents.map(async (doc) => {
@@ -198,6 +201,7 @@ function render(){
     ${task.description ? `<p class="project-desc">${escapeHTML(task.description)}</p>` : ''}
     <div class="card-row" style="margin:14px 0;">
       <span class="chip status-badge ${task.status}">${t('project.col_' + task.status)}</span>
+      ${task.project_wbs_items ? `<span class="chip">📦 ${escapeHTML(task.project_wbs_items.title)}</span>` : ''}
       ${dtLabel ? `<span class="chip${isOverdue ? ' overdue' : ''}">${t('project.due')} ${dtLabel}${isOverdue ? ' · ' + t('task.overdue') : ''}</span>` : ''}
       ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
     </div>
@@ -221,6 +225,14 @@ function render(){
         ${['created','working','finished','approved'].map(c => `<option value="${c}" ${c === task.status ? 'selected' : ''}>${t('project.col_' + c)}</option>`).join('')}
       </select>
     </div>
+
+    <div class="section-block">
+      <h2>${t('task.change_wbs_heading')}</h2>
+      <select class="stage-select" data-task-wbs data-task-id="${task.id}" aria-label="${t('task.change_wbs_heading')}">
+        <option value="">${t('project.task_wbs_none')}</option>
+        ${wbsItems.map(w => `<option value="${w.id}" ${task.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+      </select>
+    </div>
   `;
   content.innerHTML = html;
   wireEvents();
@@ -230,6 +242,11 @@ function wireEvents(){
   content.querySelectorAll('[data-task-status]').forEach(sel => sel.addEventListener('change', async () => {
     sel.disabled = true;
     await supabaseClient.from('project_tasks').update({ status: sel.value }).eq('id', sel.dataset.taskId);
+    loadTask();
+  }));
+  content.querySelectorAll('[data-task-wbs]').forEach(sel => sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    await supabaseClient.from('project_tasks').update({ wbs_item_id: sel.value || null }).eq('id', sel.dataset.taskId);
     loadTask();
   }));
 

@@ -1710,3 +1710,12 @@ create policy "Admin can update any chat message" on project_chat_messages
 drop policy if exists "Admin can delete any chat message" on project_chat_messages;
 create policy "Admin can delete any chat message" on project_chat_messages
   for delete using (public.is_site_admin());
+
+-- ---------------------------------------------------------------------------
+-- Lets a task optionally link to the work package it belongs to. Nullable —
+-- most projects won't use a WBS, and existing tasks stay unlinked. Set to
+-- null (not cascaded) if the work package is deleted, since a task shouldn't
+-- disappear just because its WBS entry did.
+-- ---------------------------------------------------------------------------
+alter table project_tasks add column if not exists wbs_item_id uuid references project_wbs_items(id) on delete set null;
+create index if not exists project_tasks_wbs_item_id_idx on project_tasks (wbs_item_id);

@@ -1095,6 +1095,8 @@ function renderRequirementsPanel(isOwner){
 
 function renderTasksPanel(isOwner, approvedCollabs){
   const tasks = project.project_tasks || [];
+  const wbsItems = project.project_wbs_items || [];
+  const wbsById = new Map(wbsItems.map(w => [w.id, w]));
   const columns = ['created','working','finished','approved'];
   let html = `<p class="poll-meta" style="margin-top:0;">${t('project.tab_kanban_note')}</p>`;
   html += `<div class="kanban">`;
@@ -1104,11 +1106,13 @@ function renderTasksPanel(isOwner, approvedCollabs){
     if (colTasks.length === 0) html += `<p class="kanban-empty">${t('project.no_tasks_in_column')}</p>`;
     colTasks.forEach(tk => {
       const assignees = (tk.task_assignees || []).map(a => a.profiles?.display_name || '?');
+      const wbsItem = tk.wbs_item_id ? wbsById.get(tk.wbs_item_id) : null;
       html += `
         <div class="task-card">
           <h5>${escapeHTML(tk.title)}</h5>
           ${tk.description ? `<p>${escapeHTML(tk.description)}</p>` : ''}
           <div class="task-meta">
+            ${wbsItem ? `<span class="chip">📦 ${escapeHTML(wbsItem.title)}</span>` : ''}
             ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
             ${tk.due_date ? `<span class="chip">${t('project.due')} ${escapeHTML(tk.due_date)}</span>` : ''}
           </div>
@@ -1142,6 +1146,12 @@ function renderTasksPanel(isOwner, approvedCollabs){
           <label>${t('project.task_title')}<input type="text" required name="title" maxlength="80" value="${editingTask ? escapeHTML(editingTask.title) : ''}"></label>
           <label>${t('project.task_desc')}<textarea name="description" rows="2" maxlength="300">${editingTask ? escapeHTML(editingTask.description || '') : ''}</textarea></label>
           <label>${t('project.task_due')}<input type="date" name="due_date" value="${editingTask && editingTask.due_date ? editingTask.due_date : ''}"></label>
+          <label>${t('project.task_wbs_label')}
+            <select name="wbs_item_id">
+              <option value="">${t('project.task_wbs_none')}</option>
+              ${wbsItems.map(w => `<option value="${w.id}" ${editingTask && editingTask.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+            </select>
+          </label>
           <label>${t('project.task_assignees')}<div class="assignee-checks">${assigneesHTML}</div></label>
           <button class="btn btn-ghost btn-small" type="submit">${editingTaskId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="taskMsg"></p>
@@ -1311,7 +1321,7 @@ function wireEvents(){
     const fd = new FormData(e.target);
     const editingId = e.target.dataset.editing;
     const checkedAssignees = [...e.target.querySelectorAll('input[name="assignee"]:checked')].map(cb => cb.value);
-    const payload = { title: fd.get('title'), description: fd.get('description') || null, due_date: fd.get('due_date') || null };
+    const payload = { title: fd.get('title'), description: fd.get('description') || null, due_date: fd.get('due_date') || null, wbs_item_id: fd.get('wbs_item_id') || null };
     let taskId = editingId || null;
     let error;
     if (editingId){
