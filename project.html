@@ -627,7 +627,7 @@ function ganttFmtDate(ms){
 }
 const GANTT_DAY_MS = 86400000;
 
-function renderGanttChart(activities, links, zoom){
+function renderGanttChart(activities, links, zoom, wbsById){
   if (activities.length === 0) return `<p class="credits-note">${t('project.no_activities')}</p>`;
 
   let minDate = ganttParseDate(activities[0].start_date);
@@ -661,8 +661,10 @@ function renderGanttChart(activities, links, zoom){
     const top = idx * rowHeight;
     rowCenterY[a.id] = top + rowHeight / 2;
     barsHtml += `<div class="gantt-row" style="top:${top}px;width:${chartWidth}px;"></div>`;
+    const wbsItem = a.wbs_item_id && wbsById ? wbsById.get(a.wbs_item_id) : null;
+    const tooltip = `${a.title}: ${a.start_date} → ${a.end_date}${wbsItem ? ` (${wbsItem.title})` : ''}`;
     barsHtml += `
-      <div class="gantt-bar" style="left:${left}px;top:${top + 7}px;width:${Math.max(width - 4, 12)}px;height:${rowHeight - 14}px;" title="${escapeHTML(a.title)}: ${escapeHTML(a.start_date)} → ${escapeHTML(a.end_date)}">
+      <div class="gantt-bar" style="left:${left}px;top:${top + 7}px;width:${Math.max(width - 4, 12)}px;height:${rowHeight - 14}px;" title="${escapeHTML(tooltip)}">
         <span class="gantt-bar-label">${escapeHTML(a.title)}</span>
       </div>
     `;
@@ -712,18 +714,22 @@ function renderGanttChart(activities, links, zoom){
 function renderSchedulePanel(){
   const activities = (project.project_activities || []).slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
   const links = project.project_activity_links || [];
+  const wbsItems = project.project_wbs_items || [];
+  const wbsById = new Map(wbsItems.map(w => [w.id, w]));
 
   let html = renderChartToolbar('gantt', ganttZoom);
-  html += `<div id="ganttWrap">${renderGanttChart(activities, links, ganttZoom)}</div>`;
+  html += `<div id="ganttWrap">${renderGanttChart(activities, links, ganttZoom, wbsById)}</div>`;
 
   html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.activities_heading')}</h3>`;
   if (activities.length === 0) html += `<p class="credits-note">${t('project.no_activities')}</p>`;
   activities.forEach(a => {
+    const wbsItem = a.wbs_item_id ? wbsById.get(a.wbs_item_id) : null;
     html += `
       <div class="cost-row">
         <div>
           <div class="cost-desc">${escapeHTML(a.title)}</div>
           <div class="cost-meta">${escapeHTML(a.start_date)} → ${escapeHTML(a.end_date)} · ${t('project.created_by')} ${escapeHTML(a.created_by_name)}</div>
+          ${wbsItem ? `<span class="chip" style="margin-top:6px;display:inline-block;">📦 ${escapeHTML(wbsItem.title)}</span>` : ''}
         </div>
         <div class="item-actions">
           <button class="icon-btn" data-edit-activity="${a.id}">${t('common.edit')}</button>
@@ -742,6 +748,12 @@ function renderSchedulePanel(){
           <label>${t('project.activity_title')}<input type="text" required name="title" maxlength="140" value="${editingActivity ? escapeHTML(editingActivity.title) : ''}"></label>
           <label>${t('project.activity_start')}<input type="date" required name="start_date" value="${editingActivity ? editingActivity.start_date : ''}"></label>
           <label>${t('project.activity_end')}<input type="date" required name="end_date" value="${editingActivity ? editingActivity.end_date : ''}"></label>
+          <label>${t('project.task_wbs_label')}
+            <select name="wbs_item_id">
+              <option value="">${t('project.task_wbs_none')}</option>
+              ${wbsItems.map(w => `<option value="${w.id}" ${editingActivity && editingActivity.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+            </select>
+          </label>
           <button class="btn btn-ghost btn-small" type="submit">${editingActivityId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="activityMsg"></p>
         </form>
@@ -1562,13 +1574,14 @@ function wireEvents(){
     const title = (fd.get('title') || '').trim();
     const startDate = fd.get('start_date');
     const endDate = fd.get('end_date');
+    const wbsItemId = fd.get('wbs_item_id') || null;
     if (endDate < startDate){ msg.textContent = t('project.activity_date_err'); msg.className = 'form-msg error'; return; }
     const editingId = e.target.dataset.editing;
     let error;
     if (editingId){
-      ({ error } = await supabaseClient.from('project_activities').update({ title, start_date: startDate, end_date: endDate }).eq('id', editingId));
+      ({ error } = await supabaseClient.from('project_activities').update({ title, start_date: startDate, end_date: endDate, wbs_item_id: wbsItemId }).eq('id', editingId));
     } else {
-      ({ error } = await supabaseClient.from('project_activities').insert({ project_id: projectId, title, start_date: startDate, end_date: endDate }));
+      ({ error } = await supabaseClient.from('project_activities').insert({ project_id: projectId, title, start_date: startDate, end_date: endDate, wbs_item_id: wbsItemId }));
     }
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
     editingActivityId = null;

@@ -1719,3 +1719,7 @@ create policy "Admin can delete any chat message" on project_chat_messages
 -- ---------------------------------------------------------------------------
 alter table project_tasks add column if not exists wbs_item_id uuid references project_wbs_items(id) on delete set null;
 create index if not exists project_tasks_wbs_item_id_idx on project_tasks (wbs_item_id);
+
+-- Same optional link, for Gantt activities.
+alter table project_activities add column if not exists wbs_item_id uuid references project_wbs_items(id) on delete set null;
+create index if not exists project_activities_wbs_item_id_idx on project_activities (wbs_item_id);
