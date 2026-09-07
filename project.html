@@ -84,7 +84,7 @@ let editingWbsId = null;
 let ganttZoom = 1;
 let wbsZoom = 1;
 
-const ZOOM_MIN = 0.5, ZOOM_MAX = 2.5, ZOOM_STEP = 0.25;
+const ZOOM_MIN = 0.05, ZOOM_MAX = 2.5, ZOOM_FACTOR = 1.25;
 
 function clampZoom(z){
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
@@ -1638,13 +1638,13 @@ function wireEvents(){
   content.querySelectorAll('[data-move-wbs-down]').forEach(btn => btn.addEventListener('click', () => moveWbsItem(btn.dataset.moveWbsDown, 'down')));
 
   content.querySelectorAll('[data-zoom-in]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.zoomIn === 'gantt') ganttZoom = clampZoom(ganttZoom + ZOOM_STEP);
-    else wbsZoom = clampZoom(wbsZoom + ZOOM_STEP);
+    if (btn.dataset.zoomIn === 'gantt') ganttZoom = clampZoom(ganttZoom * ZOOM_FACTOR);
+    else wbsZoom = clampZoom(wbsZoom * ZOOM_FACTOR);
     render();
   }));
   content.querySelectorAll('[data-zoom-out]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.zoomOut === 'gantt') ganttZoom = clampZoom(ganttZoom - ZOOM_STEP);
-    else wbsZoom = clampZoom(wbsZoom - ZOOM_STEP);
+    if (btn.dataset.zoomOut === 'gantt') ganttZoom = clampZoom(ganttZoom / ZOOM_FACTOR);
+    else wbsZoom = clampZoom(wbsZoom / ZOOM_FACTOR);
     render();
   }));
   content.querySelectorAll('[data-zoom-reset]').forEach(btn => btn.addEventListener('click', () => {
