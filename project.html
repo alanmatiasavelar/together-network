@@ -178,7 +178,7 @@ async function loadProject(){
     .select(`*,
       project_goals(*),
       project_requirements(*),
-      project_collaborators(id, user_id, status, profiles(display_name)),
+      project_collaborators(id, user_id, status, profiles(display_name, social_platform, social_url)),
       project_supporters(user_id, amount),
       project_tasks(*, task_assignees(user_id, profiles(display_name))),
       project_polls(*, poll_votes(user_id, option_index)),
@@ -964,9 +964,13 @@ function renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab){
     html += `<p class="credits-note">${t('project.no_collaborators')}</p>`;
   } else {
     approvedCollabs.forEach(c => {
+      const social = c.profiles?.social_platform && c.profiles?.social_url ? c.profiles : null;
       html += `
         <div class="wbs-list-row">
-          <span class="chip">${escapeHTML(c.profiles?.display_name || 'Collaborator')}</span>
+          <div class="card-row">
+            <span class="chip">${escapeHTML(c.profiles?.display_name || 'Collaborator')}</span>
+            ${social ? `<a class="chip wa-link" href="${escapeHTML(social.social_url)}" target="_blank" rel="noopener noreferrer">${SOCIAL_ICONS[social.social_platform]} ${t('project.social_' + social.social_platform)}</a>` : ''}
+          </div>
           ${isOwner ? `<button class="icon-btn" data-remove-collab="${c.id}">${t('project.remove_collaborator')}</button>` : ''}
         </div>
       `;
@@ -998,6 +1002,7 @@ function renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab){
 }
 
 const LINK_TYPE_ICONS = { whatsapp: '💬', drive: '📁', teams: '👥', other: '🔗' };
+const SOCIAL_ICONS = { instagram: '📷', linkedin: '💼', facebook: '👤' };
 
 function renderLinksPanel(){
   const links = project.project_links || [];

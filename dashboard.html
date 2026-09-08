@@ -67,6 +67,7 @@ const content = document.getElementById('pageContent');
 let currentUser = null;
 let myProjects = [];
 let myTasks = [];
+let myProfile = null;
 let loaded = false;
 
 function renderNav(){
@@ -124,6 +125,13 @@ async function loadDashboard(){
     .from('task_assignees')
     .select('task_id, project_tasks(id, title, status, due_date, project_id, projects(id, title))')
     .eq('user_id', currentUser.id);
+
+  const { data: profileRow } = await supabaseClient
+    .from('profiles')
+    .select('social_platform, social_url')
+    .eq('id', currentUser.id)
+    .single();
+  myProfile = profileRow || {};
 
   myTasks = (assignedRows || [])
     .map(r => r.project_tasks)
@@ -206,11 +214,72 @@ function render(){
     </div>
   `;
 
+  html += `
+    <div class="section-block">
+      <details class="add-inline">
+        <summary>${t('dashboard.social_profile')}</summary>
+        <form id="socialForm" class="auth-form">
+          <label>${t('dashboard.social_platform')}
+            <select name="social_platform">
+              <option value="">${t('dashboard.social_none')}</option>
+              <option value="instagram" ${myProfile.social_platform === 'instagram' ? 'selected' : ''}>📷 Instagram</option>
+              <option value="linkedin" ${myProfile.social_platform === 'linkedin' ? 'selected' : ''}>💼 LinkedIn</option>
+              <option value="facebook" ${myProfile.social_platform === 'facebook' ? 'selected' : ''}>👤 Facebook</option>
+            </select>
+          </label>
+          <label>${t('dashboard.social_url')}<input type="url" name="social_url" value="${escapeHTML(myProfile.social_url || '')}" placeholder="https://..."></label>
+          <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
+          <p class="form-msg" id="socialMsg"></p>
+        </form>
+      </details>
+    </div>
+  `;
+
   content.innerHTML = html;
   wireAccountForm();
 }
 
+const SOCIAL_URL_PATTERNS = {
+  instagram: /^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9_.]+\/?$/,
+  linkedin: /^https:\/\/(www\.)?linkedin\.com\/(in|company)\/[A-Za-z0-9_-]+\/?$/,
+  facebook: /^https:\/\/(www\.)?facebook\.com\/[A-Za-z0-9_.]+\/?$/
+};
+
 function wireAccountForm(){
+  const socialForm = document.getElementById('socialForm');
+  if (socialForm) socialForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('socialMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const platform = fd.get('social_platform') || null;
+    const url = (fd.get('social_url') || '').trim();
+    if (platform && !url){
+      msg.textContent = t('dashboard.social_err_missing_url');
+      msg.className = 'form-msg error';
+      return;
+    }
+    if (platform && !SOCIAL_URL_PATTERNS[platform].test(url)){
+      msg.textContent = t('dashboard.social_err_bad_url');
+      msg.className = 'form-msg error';
+      return;
+    }
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    const { error } = await supabaseClient.from('profiles').update({
+      social_platform: platform, social_url: platform ? url : null
+    }).eq('id', currentUser.id);
+    submitBtn.disabled = false;
+    if (error){
+      msg.textContent = error.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    myProfile = { social_platform: platform, social_url: platform ? url : null };
+    msg.textContent = t('dashboard.social_saved');
+    msg.className = 'form-msg ok';
+  });
+
   const form = document.getElementById('changePasswordForm');
   if (!form) return;
   form.addEventListener('submit', async (e) => {
