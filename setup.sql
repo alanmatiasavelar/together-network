@@ -1803,10 +1803,15 @@ create policy "Admin can delete any project" on projects
   for delete using (public.is_site_admin());
 
 -- ---------------------------------------------------------------------------
--- A user can list one social profile (Instagram, LinkedIn, or Facebook) on
--- their own profile, set from dashboard.html, shown next to their name on
--- every project's Team tab. Already covered by the existing "Public can
--- read profiles" / "Users can update their own profile" policies.
+-- A user can list one social profile (Instagram, LinkedIn, Facebook, or
+-- YouTube) on their own profile, set from dashboard.html, shown next to
+-- their name on every project's Team tab. Already covered by the existing
+-- "Public can read profiles" / "Users can update their own profile"
+-- policies.
 -- ---------------------------------------------------------------------------
 alter table profiles add column if not exists social_platform text check (social_platform in ('instagram','linkedin','facebook'));
 alter table profiles add column if not exists social_url text check (social_url is null or social_url ~ '^https://');
+
+alter table profiles drop constraint if exists profiles_social_platform_check;
+alter table profiles add constraint profiles_social_platform_check
+  check (social_platform in ('instagram','linkedin','facebook','youtube'));

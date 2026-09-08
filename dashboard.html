@@ -225,6 +225,7 @@ function render(){
               <option value="instagram" ${myProfile.social_platform === 'instagram' ? 'selected' : ''}>📷 Instagram</option>
               <option value="linkedin" ${myProfile.social_platform === 'linkedin' ? 'selected' : ''}>💼 LinkedIn</option>
               <option value="facebook" ${myProfile.social_platform === 'facebook' ? 'selected' : ''}>👤 Facebook</option>
+              <option value="youtube" ${myProfile.social_platform === 'youtube' ? 'selected' : ''}>▶️ YouTube</option>
             </select>
           </label>
           <label>${t('dashboard.social_url')}<input type="url" name="social_url" value="${escapeHTML(myProfile.social_url || '')}" placeholder="https://..."></label>
@@ -242,7 +243,8 @@ function render(){
 const SOCIAL_URL_PATTERNS = {
   instagram: /^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9_.]+\/?$/,
   linkedin: /^https:\/\/(www\.)?linkedin\.com\/(in|company)\/[A-Za-z0-9_-]+\/?$/,
-  facebook: /^https:\/\/(www\.)?facebook\.com\/[A-Za-z0-9_.]+\/?$/
+  facebook: /^https:\/\/(www\.)?facebook\.com\/[A-Za-z0-9_.]+\/?$/,
+  youtube: /^https:\/\/(www\.)?youtube\.com\/(channel\/|c\/|user\/|@)[A-Za-z0-9_.-]+\/?$/
 };
 
 function wireAccountForm(){
