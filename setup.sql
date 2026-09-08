@@ -1723,3 +1723,81 @@ create index if not exists project_tasks_wbs_item_id_idx on project_tasks (wbs_i
 -- Same optional link, for Gantt activities.
 alter table project_activities add column if not exists wbs_item_id uuid references project_wbs_items(id) on delete set null;
 create index if not exists project_activities_wbs_item_id_idx on project_activities (wbs_item_id);
+
+-- ---------------------------------------------------------------------------
+-- COORDINATION LINKS: a project can list any number of external links
+-- (WhatsApp groups, Drive folders, Teams channels, or anything else),
+-- replacing the old single whatsapp_link/drive_link columns (kept, unused,
+-- for safety — never dropped). Any team member can manage these, same
+-- openness as tasks/activities/WBS. See project.html's Links tab.
+-- ---------------------------------------------------------------------------
+create table if not exists project_links (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  label text not null,
+  url text not null check (url ~ '^https://'),
+  link_type text not null default 'other' check (link_type in ('whatsapp','drive','teams','other')),
+  created_by uuid not null default auth.uid(),
+  created_by_name text not null default public.current_display_name(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_links_project_id_idx on project_links (project_id);
+
+alter table project_links enable row level security;
+
+drop policy if exists "Team can read links" on project_links;
+create policy "Team can read links" on project_links
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add links" on project_links;
+create policy "Team can add links" on project_links
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update links" on project_links;
+create policy "Team can update links" on project_links
+  for update using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete links" on project_links;
+create policy "Team can delete links" on project_links
+  for delete using (public.is_project_team_member(project_id));
+
+-- One-time backfill from the old single-link columns; safe to re-run.
+insert into project_links (project_id, label, url, link_type, created_by, created_by_name)
+select id, 'WhatsApp group', whatsapp_link, 'whatsapp', owner_id, owner_name
+from projects
+where whatsapp_link is not null
+  and not exists (select 1 from project_links pl where pl.project_id = projects.id and pl.url = projects.whatsapp_link);
+
+insert into project_links (project_id, label, url, link_type, created_by, created_by_name)
+select id, 'Google Drive', drive_link, 'drive', owner_id, owner_name
+from projects
+where drive_link is not null
+  and not exists (select 1 from project_links pl where pl.project_id = projects.id and pl.url = projects.drive_link);
+
+-- ---------------------------------------------------------------------------
+-- ADMIN FULL ACCESS: the site admin counts as a team member everywhere, so
+-- they can open and manage any private project's workspace — every table
+-- above gates on this one helper, so this single change cascades instead of
+-- needing a separate admin-bypass policy per table. Also lets the admin
+-- delete a project outright from project.html when needed.
+-- ---------------------------------------------------------------------------
+create or replace function public.is_project_team_member(p_project_id uuid)
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select public.is_project_owner(p_project_id)
+    or public.is_site_admin()
+    or exists (
+    select 1 from project_collaborators
+    where project_collaborators.project_id = p_project_id
+      and project_collaborators.user_id = auth.uid()
+      and project_collaborators.status = 'approved'
+  );
+$$;
+
+drop policy if exists "Admin can delete any project" on projects;
+create policy "Admin can delete any project" on projects
+  for delete using (public.is_site_admin());

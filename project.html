@@ -68,7 +68,8 @@ const projectId = params.get('id');
 const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
-const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs'];
+const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs', 'team', 'links'];
+const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
 
 let currentUser = null;
 let project = null;
@@ -81,6 +82,7 @@ let editingFeedPostId = null;
 let editingCostId = null;
 let editingActivityId = null;
 let editingWbsId = null;
+let editingLinkId = null;
 let ganttZoom = 1;
 let wbsZoom = 1;
 
@@ -184,7 +186,8 @@ async function loadProject(){
       project_costs(*),
       project_activities(*),
       project_activity_links(*),
-      project_wbs_items(*)`)
+      project_wbs_items(*),
+      project_links(*)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -211,10 +214,12 @@ async function loadFeedPosts(loadMore){
 
 function render(){
   const isOwner = currentUser && currentUser.id === project.owner_id;
+  const isSiteAdminViewer = currentUser && (currentUser.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
   const myCollab = (project.project_collaborators || []).find(c => c.user_id === currentUser?.id);
   const approvedCollabs = (project.project_collaborators || []).filter(c => c.status === 'approved');
   const pendingRequests = (project.project_collaborators || []).filter(c => c.status === 'pending');
-  const hasAccess = isOwner || (myCollab && myCollab.status === 'approved');
+  const isTeamMember = isOwner || (myCollab && myCollab.status === 'approved');
+  const hasAccess = isTeamMember || isSiteAdminViewer;
 
   if (!hasAccess){
     renderLocked(myCollab);
@@ -222,6 +227,14 @@ function render(){
   }
 
   let html = '';
+
+  if (isSiteAdminViewer && !isTeamMember){
+    html += `
+      <div class="notify-banner" style="background:#FBEAEA;border-color:#F0C6C3;">
+        <h3>🛡 ${t('project.admin_viewing_notice')}</h3>
+      </div>
+    `;
+  }
 
   if (isOwner && pendingRequests.length > 0){
     html += `
@@ -256,6 +269,7 @@ function render(){
             ${['create','recruit','work','track','finish'].map(s => `<option value="${s}" ${project.stage === s ? 'selected' : ''}>${t('project.stage_' + s)}</option>`).join('')}
           </select>
         ` : ''}
+        ${isSiteAdminViewer ? `<button class="icon-btn" id="adminDeleteProjectBtn" style="margin-left:auto;">🗑 ${t('project.admin_delete_project')}</button>` : ''}
       </div>
     </div>
   `;
@@ -288,27 +302,6 @@ function render(){
     `;
   }
 
-  html += `<div class="section-block"><h2>${t('project.team_heading')}</h2>`;
-  html += `<div class="collab-list">` + (approvedCollabs.length
-    ? approvedCollabs.map(c => `<span class="chip">${escapeHTML(c.profiles?.display_name || 'Collaborator')}</span>`).join('')
-    : `<span class="credits-note">${t('project.no_collaborators')}</span>`) + `</div>`;
-
-  if (!currentUser){
-    html += `<p style="margin-top:14px;font-size:14px;"><a href="login.html">${t('nav.login')}</a> ${t('project.login_to_join')}</p>`;
-  } else if (isOwner){
-    // owner doesn't request to join their own project
-  } else if (!myCollab){
-    html += `<button class="btn btn-primary btn-small" id="requestJoinBtn" style="margin-top:14px;">${t('project.request_to_join')}</button>`;
-  } else if (myCollab.status === 'pending'){
-    html += `<p style="margin-top:14px;font-size:14px;color:var(--ink-soft);">${t('project.pending_approval')}</p>`;
-  } else if (myCollab.status === 'approved'){
-    html += `<p style="margin-top:14px;font-size:14px;">${t('project.youre_collaborator')} <button class="btn btn-ghost btn-small" id="leaveBtn">${t('project.leave')}</button></p>`;
-  } else if (myCollab.status === 'denied'){
-    html += `<p style="margin-top:14px;font-size:14px;color:var(--ink-soft);">${t('project.declined')} <button class="btn btn-ghost btn-small" id="reRequestBtn">${t('project.request_again')}</button></p>`;
-  }
-  html += `<p class="form-msg" id="teamMsg"></p>`;
-  html += `</div>`;
-
   // --- Tabs ---
   html += `
     <div class="tab-bar">
@@ -321,6 +314,8 @@ function render(){
       <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
       <button data-tab="schedule" class="${activeTab === 'schedule' ? 'active' : ''}">${t('project.tab_schedule')}</button>
       <button data-tab="wbs" class="${activeTab === 'wbs' ? 'active' : ''}">${t('project.tab_wbs')}</button>
+      <button data-tab="team" class="${activeTab === 'team' ? 'active' : ''}">${t('project.tab_team')}</button>
+      <button data-tab="links" class="${activeTab === 'links' ? 'active' : ''}">${t('project.tab_links')}</button>
       <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
@@ -332,48 +327,9 @@ function render(){
     <div class="tab-panel" data-panel="costs" ${activeTab !== 'costs' ? 'hidden' : ''}>${renderCostsPanel()}</div>
     <div class="tab-panel" data-panel="schedule" ${activeTab !== 'schedule' ? 'hidden' : ''}>${renderSchedulePanel()}</div>
     <div class="tab-panel" data-panel="wbs" ${activeTab !== 'wbs' ? 'hidden' : ''}>${renderWbsPanel()}</div>
+    <div class="tab-panel" data-panel="team" ${activeTab !== 'team' ? 'hidden' : ''}>${renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab)}</div>
+    <div class="tab-panel" data-panel="links" ${activeTab !== 'links' ? 'hidden' : ''}>${renderLinksPanel()}</div>
   `;
-
-  // --- Coordination ---
-  html += `<div class="section-block"><h2>${t('project.coordination')}</h2>`;
-  html += `<div class="card-row">`;
-  if (project.whatsapp_link){
-    html += `<a class="chip wa-link" href="${escapeHTML(project.whatsapp_link)}" target="_blank" rel="noopener noreferrer">${t('project.join_whatsapp')}</a>`;
-  }
-  if (project.drive_link){
-    html += `<a class="chip wa-link" href="${escapeHTML(project.drive_link)}" target="_blank" rel="noopener noreferrer">${t('project.join_drive')}</a>`;
-  }
-  html += `</div>`;
-  if (!project.whatsapp_link && !project.drive_link && !isOwner){
-    html += `<p class="credits-note">${t('project.no_whatsapp')}</p>`;
-  }
-  if (isOwner){
-    if (!project.whatsapp_link){
-      html += `
-        <details class="wa-add">
-          <summary>${t('project.add_whatsapp')}</summary>
-          <form class="wa-form" data-field="whatsapp_link">
-            <input type="url" name="whatsapp_link" placeholder="https://chat.whatsapp.com/..." required>
-            <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
-            <p class="form-msg" data-wa-msg></p>
-          </form>
-        </details>
-      `;
-    }
-    if (!project.drive_link){
-      html += `
-        <details class="wa-add">
-          <summary>${t('project.add_drive')}</summary>
-          <form class="wa-form" data-field="drive_link">
-            <input type="url" name="drive_link" placeholder="https://drive.google.com/drive/folders/..." required>
-            <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
-            <p class="form-msg" data-wa-msg></p>
-          </form>
-        </details>
-      `;
-    }
-  }
-  html += `</div>`;
 
   content.innerHTML = html;
   wireEvents();
@@ -983,6 +939,111 @@ function renderWbsPanel(){
   return html;
 }
 
+function renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab){
+  let html = `<h3 style="font-size:15px;margin-bottom:10px;">${t('project.team_heading')}</h3>`;
+
+  if (isOwner && pendingRequests.length > 0){
+    html += `<div class="section-block"><h4 style="font-size:13.5px;color:var(--ink-soft);margin-bottom:8px;">${t('project.pending_requests_heading')}</h4>`;
+    pendingRequests.forEach(r => {
+      html += `
+        <div class="notify-row">
+          <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}</span>
+          <div class="notify-actions">
+            <button class="btn btn-ghost btn-small" data-approve="${r.id}">${t('project.approve')}</button>
+            <button class="btn btn-ghost btn-small" data-deny="${r.id}">${t('project.deny')}</button>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  html += `<div class="section-block">`;
+  if (approvedCollabs.length === 0){
+    html += `<p class="credits-note">${t('project.no_collaborators')}</p>`;
+  } else {
+    approvedCollabs.forEach(c => {
+      html += `
+        <div class="wbs-list-row">
+          <span class="chip">${escapeHTML(c.profiles?.display_name || 'Collaborator')}</span>
+          ${isOwner ? `<button class="icon-btn" data-remove-collab="${c.id}">${t('project.remove_collaborator')}</button>` : ''}
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+
+  const isSiteAdminViewer = currentUser && (currentUser.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  html += `<div class="section-block">`;
+  if (!currentUser){
+    html += `<p style="font-size:14px;"><a href="login.html">${t('nav.login')}</a> ${t('project.login_to_join')}</p>`;
+  } else if (isOwner){
+    // owner doesn't request to join their own project
+  } else if (isSiteAdminViewer && !myCollab){
+    // admin viewing a project they're not part of — no self-service join/leave state to show
+  } else if (!myCollab){
+    html += `<button class="btn btn-primary btn-small" id="requestJoinBtn">${t('project.request_to_join')}</button>`;
+  } else if (myCollab.status === 'pending'){
+    html += `<p style="font-size:14px;color:var(--ink-soft);">${t('project.pending_approval')}</p>`;
+  } else if (myCollab.status === 'approved'){
+    html += `<p style="font-size:14px;">${t('project.youre_collaborator')} <button class="btn btn-ghost btn-small" id="leaveBtn">${t('project.leave')}</button></p>`;
+  } else if (myCollab.status === 'denied'){
+    html += `<p style="font-size:14px;color:var(--ink-soft);">${t('project.declined')} <button class="btn btn-ghost btn-small" id="reRequestBtn">${t('project.request_again')}</button></p>`;
+  }
+  html += `<p class="form-msg" id="teamMsg"></p>`;
+  html += `</div>`;
+
+  return html;
+}
+
+const LINK_TYPE_ICONS = { whatsapp: '💬', drive: '📁', teams: '👥', other: '🔗' };
+
+function renderLinksPanel(){
+  const links = project.project_links || [];
+  let html = `<h3 style="font-size:15px;margin-bottom:10px;">${t('project.links_tab_heading')}</h3>`;
+
+  if (links.length === 0){
+    html += `<p class="credits-note">${t('project.coord_no_links')}</p>`;
+  } else {
+    links.forEach(l => {
+      html += `
+        <div class="wbs-list-row">
+          <a class="chip wa-link" href="${escapeHTML(l.url)}" target="_blank" rel="noopener noreferrer">${LINK_TYPE_ICONS[l.link_type] || '🔗'} ${escapeHTML(l.label)}</a>
+          <div class="item-actions">
+            <button class="icon-btn" data-edit-link="${l.id}">${t('common.edit')}</button>
+            <button class="icon-btn" data-delete-link2="${l.id}">${t('common.delete')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+
+  if (currentUser){
+    const editingLink = editingLinkId ? links.find(l => l.id === editingLinkId) : null;
+    html += `
+      <details class="add-inline" ${editingLinkId ? 'open' : ''} style="margin-top:14px;">
+        <summary>${editingLinkId ? t('common.edit') : t('project.coord_add_link')}</summary>
+        <form id="linkForm2" class="auth-form" data-editing="${editingLinkId || ''}">
+          <label>${t('project.link_type_label')}
+            <select name="link_type">
+              <option value="whatsapp" ${editingLink?.link_type === 'whatsapp' ? 'selected' : ''}>💬 WhatsApp</option>
+              <option value="drive" ${editingLink?.link_type === 'drive' ? 'selected' : ''}>📁 Google Drive</option>
+              <option value="teams" ${editingLink?.link_type === 'teams' ? 'selected' : ''}>👥 Microsoft Teams</option>
+              <option value="other" ${!editingLink || editingLink.link_type === 'other' ? 'selected' : ''}>🔗 ${t('project.link_type_other')}</option>
+            </select>
+          </label>
+          <label>${t('project.link_label_label')}<input type="text" required name="label" maxlength="80" value="${editingLink ? escapeHTML(editingLink.label) : ''}" placeholder="${t('project.link_label_placeholder')}"></label>
+          <label>${t('project.link_url_label')}<input type="url" required name="url" value="${editingLink ? escapeHTML(editingLink.url) : ''}" placeholder="https://..."></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingLinkId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="linkMsg2"></p>
+        </form>
+      </details>
+    `;
+  }
+
+  return html;
+}
+
 async function recalcAndSaveSchedule(){
   const [{ data: activities }, { data: links }] = await Promise.all([
     supabaseClient.from('project_activities').select('*').eq('project_id', projectId),
@@ -1358,21 +1419,6 @@ function wireEvents(){
     loadProject();
   }));
 
-  // --- WhatsApp / PayPal links ---
-  content.querySelectorAll('.wa-form').forEach(form => form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const field = form.dataset.field;
-    const pattern = field === 'drive_link' ? DRIVE_LINK_PATTERN : WHATSAPP_LINK_PATTERN;
-    const errKey = field === 'drive_link' ? 'feed.drive_err' : 'feed.whatsapp_err';
-    const msgEl = form.querySelector('[data-wa-msg]');
-    const link = form.querySelector(`input[name="${field}"]`).value.trim();
-    msgEl.textContent = ''; msgEl.className = 'form-msg';
-    if (!pattern.test(link)){ msgEl.textContent = t(errKey); msgEl.className = 'form-msg error'; return; }
-    const { error } = await supabaseClient.from('projects').update({ [field]: link }).eq('id', projectId);
-    if (error){ msgEl.textContent = error.message; msgEl.className = 'form-msg error'; return; }
-    loadProject();
-  }));
-
   // --- Team feed ---
   const feedPostForm = document.getElementById('feedPostForm');
   if (feedPostForm) feedPostForm.addEventListener('submit', async (e) => {
@@ -1681,6 +1727,56 @@ function wireEvents(){
     if (prefix === 'gantt') exportChartToPng('ganttScroll', `${projectTitle}-gantt.png`);
     else exportChartToPng('wbsScroll', `${projectTitle}-wbs.png`);
   }));
+
+  // --- Team tab ---
+  content.querySelectorAll('[data-remove-collab]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm(t('project.remove_collaborator_confirm'))) return;
+    await supabaseClient.from('project_collaborators').delete().eq('id', btn.dataset.removeCollab);
+    loadProject();
+  }));
+
+  // --- Links tab ---
+  const linkForm2 = document.getElementById('linkForm2');
+  if (linkForm2) linkForm2.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('linkMsg2');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const payload = {
+      label: (fd.get('label') || '').trim(),
+      url: (fd.get('url') || '').trim(),
+      link_type: fd.get('link_type') || 'other'
+    };
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_links').update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_links').insert({ project_id: projectId, ...payload }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingLinkId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-link]').forEach(btn => btn.addEventListener('click', () => {
+    editingLinkId = btn.dataset.editLink;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-link2]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_links').delete().eq('id', btn.dataset.deleteLink2);
+    loadProject();
+  }));
+
+  // --- Admin controls ---
+  const adminDeleteBtn = document.getElementById('adminDeleteProjectBtn');
+  if (adminDeleteBtn) adminDeleteBtn.addEventListener('click', async () => {
+    if (!confirm(t('project.admin_delete_confirm'))) return;
+    if (!confirm(t('project.admin_delete_confirm2'))) return;
+    adminDeleteBtn.disabled = true;
+    const { error } = await supabaseClient.from('projects').delete().eq('id', projectId);
+    if (error){ alert(error.message); adminDeleteBtn.disabled = false; return; }
+    window.location.href = 'feed.html';
+  });
 
 }
 
