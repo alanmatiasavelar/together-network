@@ -180,6 +180,7 @@
     padding:22px;display:flex;flex-direction:column;gap:14px;position:relative;
   }
   .feed-card.example{border-style:dashed;}
+  .feed-card[data-card-href]{cursor:pointer;}
   .example-tag{
     position:absolute;top:14px;right:14px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;
     color:var(--ink-soft);background:var(--mist);border:1px solid var(--line);border-radius:100px;padding:3px 9px;
@@ -819,6 +820,27 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 .post-card p.post-text{font-size:14px;color:var(--ink);white-space:pre-wrap;}
 .post-card .post-date{font-size:11.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
 .post-card .item-actions{margin-top:auto;padding-top:6px;}
+
+.carousel-row{display:flex;align-items:center;gap:8px;}
+.carousel-scroll{
+  display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x proximity;padding:4px 2px 12px;
+  scrollbar-width:thin;scrollbar-color:var(--line) transparent;flex:1;
+}
+.carousel-arrow{
+  flex:none;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--panel);
+  color:var(--ink-soft);cursor:pointer;font-size:16px;transition:background .15s,color .15s;
+}
+.carousel-arrow:hover{background:var(--mist);color:var(--ink);}
+.archive-card{
+  flex:none;width:220px;scroll-snap-align:start;background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;overflow:hidden;cursor:pointer;transition:transform .15s,box-shadow .15s;
+}
+.archive-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px -14px rgba(44,55,66,0.3);}
+.archive-card img{width:100%;aspect-ratio:16/10;object-fit:cover;}
+.archive-card-body{padding:12px 14px;}
+.archive-card-body h4{font-size:14.5px;margin-bottom:4px;}
+.archive-card-body p{font-size:12.5px;color:var(--ink-soft);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.archive-card-body .owner{display:block;font-size:11px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;margin-top:8px;}
 
 /* ---------- Payment QR codes ---------- */
 .qr-grid{display:grid;grid-template-columns:1fr;gap:16px;}

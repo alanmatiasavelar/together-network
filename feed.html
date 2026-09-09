@@ -58,7 +58,7 @@
         <summary data-i18n="feed.start_project">Start a project</summary>
         <div class="new-project-body">
           <form id="projectForm" class="auth-form">
-            <label><span data-i18n="feed.title_label">Title</span><input type="text" required name="title" maxlength="80"></label>
+            <label><span data-i18n="feed.title_label">Title</span><input type="text" required name="title" maxlength="80" data-i18n-placeholder="feed.title_placeholder" placeholder="e.g. Clean Water for Rural Schools"></label>
             <label><span data-i18n="feed.pitch_label">One-line pitch</span><input type="text" required name="pitch" maxlength="140"></label>
             <label><span data-i18n="feed.desc_label">Description (optional)</span><textarea name="description" rows="3" maxlength="600"></textarea></label>
             <label><span data-i18n="feed.category_label">Category</span>
@@ -140,6 +140,8 @@
         </article>
       </div>
 
+      <div id="archiveSection"></div>
+
     </div>
   </section>
 </main>
@@ -166,6 +168,7 @@ function onLangChange(){
   renderNav();
   renderFilteredFeed();
   loadUpdates();
+  loadArchive();
 }
 
 let currentUser = null;
@@ -236,7 +239,7 @@ function cardHTML(p, opts){
   }
 
   return `
-    <article class="feed-card ${opts.example ? 'example' : ''}">
+    <article class="feed-card ${opts.example ? 'example' : ''}" ${opts.example ? '' : `data-card-href="learn-more.html?id=${p.id}"`}>
       ${opts.example ? `<span class="example-tag">${t('feed.example_tag')}</span>` : ''}
       ${mediaBlock}
       <div class="feed-card-top">
@@ -368,6 +371,45 @@ async function loadUpdates(){
   `;
 }
 
+function archiveCardHTML(p){
+  return `
+    <article class="archive-card" data-card-href="learn-more.html?id=${p.id}">
+      ${p.image_url ? `<img src="${escapeHTML(p.image_url)}" alt="${escapeHTML(p.title)}" loading="lazy" onerror="this.remove()">` : ''}
+      <div class="archive-card-body">
+        <h4>${escapeHTML(p.title)}</h4>
+        <p>${escapeHTML(p.pitch)}</p>
+        <span class="owner">${t('feed.manager')} ${escapeHTML(p.owner_name)}</span>
+      </div>
+    </article>
+  `;
+}
+
+async function loadArchive(){
+  const section = document.getElementById('archiveSection');
+  if (!supabaseClient) return;
+  const { data, error } = await supabaseClient
+    .from('projects')
+    .select('id, title, pitch, image_url, owner_name')
+    .eq('stage', 'finish')
+    .order('created_at', { ascending: false })
+    .limit(12);
+  if (error || !data || data.length === 0){ section.innerHTML = ''; return; }
+  section.innerHTML = `
+    <div class="section-head" style="margin-bottom:20px;">
+      <p class="eyebrow">${t('feed.archive_eyebrow')}</p>
+      <h2 style="font-size:22px;margin-top:8px;">${t('feed.archive_heading')}</h2>
+    </div>
+    <div class="carousel-row">
+      <button class="carousel-arrow" id="archiveScrollLeft" type="button" aria-label="${t('feed.scroll_left')}">←</button>
+      <div class="carousel-scroll" id="archiveScroll">${data.map(archiveCardHTML).join('')}</div>
+      <button class="carousel-arrow" id="archiveScrollRight" type="button" aria-label="${t('feed.scroll_right')}">→</button>
+    </div>
+  `;
+  const scroller = document.getElementById('archiveScroll');
+  document.getElementById('archiveScrollLeft').addEventListener('click', () => scroller.scrollBy({ left: -300, behavior: 'smooth' }));
+  document.getElementById('archiveScrollRight').addEventListener('click', () => scroller.scrollBy({ left: 300, behavior: 'smooth' }));
+}
+
 document.getElementById('projectForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = document.getElementById('projectMsg');
@@ -424,6 +466,12 @@ async function checkProjectLimit(){
 }
 
 async function init(){
+  document.querySelector('main').addEventListener('click', (e) => {
+    if (e.target.closest('.card-links, a, button')) return; // let explicit links/buttons handle their own click
+    const card = e.target.closest('[data-card-href]');
+    if (card) window.location.href = card.dataset.cardHref;
+  });
+
   document.getElementById('filterCategory').addEventListener('change', renderFilteredFeed);
   document.getElementById('filterType').addEventListener('change', renderFilteredFeed);
   document.getElementById('sortBy').addEventListener('change', renderFilteredFeed);
@@ -446,6 +494,7 @@ async function init(){
   renderNav();
   loadFeed();
   loadUpdates();
+  loadArchive();
   checkProjectLimit();
 
   const els = document.querySelectorAll('.reveal');

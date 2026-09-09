@@ -130,7 +130,12 @@ async function loadProject(){
   }
   const { data, error } = await supabaseClient
     .from('projects')
-    .select('*, project_posts(*), project_supporters(id, user_id, amount, confirmed, profiles(display_name))')
+    .select(`*,
+      project_posts(*),
+      project_supporters(id, user_id, amount, confirmed, profiles(display_name)),
+      project_collaborators(id, user_id, status),
+      project_favorites(id),
+      owner:profiles!projects_owner_id_fkey(email)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -156,7 +161,7 @@ function renderSupportSection(isOwner){
   const peopleWord = confirmedRows.length === 1 ? t('feed.credits_person') : t('feed.credits_people');
   const anyMethodSet = PAYMENT_METHODS.some(m => project[m.column]);
 
-  let html = `<div class="section-block"><h2>${t('project.support_heading')}</h2>`;
+  let html = `<div class="section-block" id="supportSection"><h2>${t('project.support_heading')}</h2>`;
   html += `
     <div class="credits-block">
       <span class="credits-total">$${totalCredits.toFixed(2)}</span> ${t('feed.credits_from')} ${confirmedRows.length} ${peopleWord}
@@ -230,8 +235,50 @@ function renderSupportSection(isOwner){
   return html;
 }
 
+function renderActionRow(isOwner, myCollab){
+  const isFinished = project.stage === 'finish';
+  const isFavorited = (project.project_favorites || []).length > 0;
+  const shareUrl = window.location.href;
+  const shareText = encodeURIComponent(project.title);
+  const encodedUrl = encodeURIComponent(shareUrl);
+
+  let html = `<div class="card-row" style="justify-content:center;margin-top:14px;flex-wrap:wrap;">`;
+  html += `
+    <a class="btn btn-ghost btn-small" href="https://wa.me/?text=${shareText}%20${encodedUrl}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+    <a class="btn btn-ghost btn-small" href="https://t.me/share/url?url=${encodedUrl}&text=${shareText}" target="_blank" rel="noopener noreferrer">✈️ Telegram</a>
+    <a class="btn btn-ghost btn-small" href="https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}" target="_blank" rel="noopener noreferrer">💼 LinkedIn</a>
+    <a class="btn btn-ghost btn-small" href="https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}" target="_blank" rel="noopener noreferrer">👤 Facebook</a>
+    <button class="btn btn-ghost btn-small" id="shareProjectBtn" type="button">🔗 ${t('learnmore.more')}</button>
+  `;
+
+  if (isFinished){
+    const ownerEmail = project.owner?.email || '';
+    html += `<a class="btn btn-ghost btn-small" href="mailto:${escapeHTML(ownerEmail)}?subject=${encodeURIComponent(project.title)}">✉️ ${t('learnmore.contact_manager')}</a>`;
+  } else {
+    html += `<button class="btn btn-ghost btn-small" id="supportScrollBtn" type="button">💰 ${t('project.support_heading')}</button>`;
+    html += `<button class="btn btn-ghost btn-small" id="favoriteBtn" type="button">${isFavorited ? `★ ${t('learnmore.favorited')}` : `☆ ${t('learnmore.favorite')}`}</button>`;
+
+    if (!currentUser){
+      html += `<a class="btn btn-ghost btn-small" href="login.html">🤝 ${t('project.request_to_join')}</a>`;
+    } else if (isOwner){
+      // owner doesn't request to join their own project
+    } else if (!myCollab){
+      html += `<button class="btn btn-ghost btn-small" id="participateBtn" type="button">🤝 ${t('project.request_to_join')}</button>`;
+    } else if (myCollab.status === 'pending'){
+      html += `<span class="chip">${t('project.pending_approval')}</span>`;
+    } else if (myCollab.status === 'approved'){
+      html += `<span class="chip">${t('project.youre_collaborator')}</span>`;
+    } else if (myCollab.status === 'denied'){
+      html += `<button class="btn btn-ghost btn-small" id="reRequestBtn2" type="button">${t('project.request_again')}</button>`;
+    }
+  }
+  html += `</div><p class="form-msg" id="shareMsg" style="text-align:center;"></p><p class="form-msg" id="actionMsg" style="text-align:center;"></p>`;
+  return html;
+}
+
 function render(){
   const isOwner = currentUser && currentUser.id === project.owner_id;
+  const myCollab = (project.project_collaborators || []).find(c => c.user_id === currentUser?.id);
   const posts = (project.project_posts || []).slice().sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
 
   let html = `
@@ -239,14 +286,12 @@ function render(){
       ${project.image_url ? `<img class="feed-card-image" src="${escapeHTML(project.image_url)}" alt="${escapeHTML(project.title)}" onerror="this.remove()">` : ''}
       <h1>${escapeHTML(project.title)}</h1>
       <p>${escapeHTML(project.pitch)}</p>
-      <div class="card-row" style="justify-content:center;margin-top:14px;">
-        <button class="btn btn-ghost btn-small" id="shareProjectBtn" type="button">${t('learnmore.share')}</button>
-      </div>
-      <p class="form-msg" id="shareMsg" style="text-align:center;"></p>
-      <p style="margin-top:14px;">
-        <span data-i18n="learnmore.private_page_note">${t('learnmore.private_page_note')}</span>
-        <a class="view-project-link" href="project.html?id=${projectId}">${t('learnmore.go_private')}</a>
-      </p>
+      ${renderActionRow(isOwner, myCollab)}
+      ${(isOwner || (myCollab && myCollab.status === 'approved')) ? `
+        <p style="margin-top:14px;">
+          <a class="view-project-link" href="project.html?id=${projectId}">${t('learnmore.go_private')}</a>
+        </p>
+      ` : ''}
     </div>
   `;
 
@@ -310,7 +355,7 @@ function render(){
     html += `</div>`;
   }
 
-  html += renderSupportSection(isOwner);
+  if (project.stage !== 'finish') html += renderSupportSection(isOwner);
 
   content.innerHTML = html;
   updatePageMeta();
@@ -345,6 +390,48 @@ function wireEvents(){
       shareMsg.textContent = window.location.href;
       shareMsg.className = 'form-msg';
     }
+  });
+
+  const supportScrollBtn = document.getElementById('supportScrollBtn');
+  if (supportScrollBtn) supportScrollBtn.addEventListener('click', () => {
+    supabaseClient.rpc('increment_support_clicks', { p_project_id: projectId }).then(() => {});
+    document.getElementById('supportSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  const favoriteBtn = document.getElementById('favoriteBtn');
+  if (favoriteBtn) favoriteBtn.addEventListener('click', async () => {
+    const actionMsg = document.getElementById('actionMsg');
+    if (!currentUser){ window.location.href = 'login.html'; return; }
+    favoriteBtn.disabled = true;
+    const isFavorited = (project.project_favorites || []).length > 0;
+    if (isFavorited){
+      await supabaseClient.from('project_favorites').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
+    } else {
+      const { error } = await supabaseClient.from('project_favorites').insert({ project_id: projectId, user_id: currentUser.id });
+      if (error){ actionMsg.textContent = error.message; actionMsg.className = 'form-msg error'; favoriteBtn.disabled = false; return; }
+    }
+    loadProject();
+  });
+
+  const participateBtn = document.getElementById('participateBtn');
+  if (participateBtn) participateBtn.addEventListener('click', async () => {
+    participateBtn.disabled = true;
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    if (error){
+      const actionMsg = document.getElementById('actionMsg');
+      actionMsg.textContent = error.message; actionMsg.className = 'form-msg error';
+      participateBtn.disabled = false;
+      return;
+    }
+    loadProject();
+  });
+
+  const reRequestBtn2 = document.getElementById('reRequestBtn2');
+  if (reRequestBtn2) reRequestBtn2.addEventListener('click', async () => {
+    reRequestBtn2.disabled = true;
+    await supabaseClient.from('project_collaborators').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
+    await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    loadProject();
   });
 
   const postForm = document.getElementById('postForm');

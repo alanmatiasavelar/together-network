@@ -1815,3 +1815,52 @@ alter table profiles add column if not exists social_url text check (social_url 
 alter table profiles drop constraint if exists profiles_social_platform_check;
 alter table profiles add constraint profiles_social_platform_check
   check (social_platform in ('instagram','linkedin','facebook','youtube'));
+
+-- ---------------------------------------------------------------------------
+-- FAVORITES: a user can bookmark a project to track it from their own
+-- profile/dashboard. Private to the user — only they can see, add, or
+-- remove their own favorites.
+-- ---------------------------------------------------------------------------
+create table if not exists project_favorites (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  user_id uuid not null default auth.uid(),
+  created_at timestamptz not null default now(),
+  unique (project_id, user_id)
+);
+
+create index if not exists project_favorites_user_id_idx on project_favorites (user_id);
+
+alter table project_favorites enable row level security;
+
+drop policy if exists "Users can read their own favorites" on project_favorites;
+create policy "Users can read their own favorites" on project_favorites
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "Users can add their own favorites" on project_favorites;
+create policy "Users can add their own favorites" on project_favorites
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "Users can remove their own favorites" on project_favorites;
+create policy "Users can remove their own favorites" on project_favorites
+  for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- SUPPORT CLICKS: a lightweight engagement counter — incremented whenever
+-- anyone opens the funding/support tab, independent of whether they
+-- actually complete a payment. Exposed via an RPC (not direct table
+-- writes) so it's safe to call from anon/authenticated without a broader
+-- UPDATE grant on projects.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists support_click_count integer not null default 0;
+
+create or replace function public.increment_support_clicks(p_project_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update projects set support_click_count = support_click_count + 1 where id = p_project_id;
+$$;
+
+grant execute on function public.increment_support_clicks(uuid) to anon, authenticated;

@@ -68,6 +68,7 @@ let currentUser = null;
 let myProjects = [];
 let myTasks = [];
 let myProfile = null;
+let myFavorites = [];
 let loaded = false;
 
 function renderNav(){
@@ -133,6 +134,13 @@ async function loadDashboard(){
     .single();
   myProfile = profileRow || {};
 
+  const { data: favoriteRows } = await supabaseClient
+    .from('project_favorites')
+    .select('id, project_id, projects(id, title, category, goal_type, stage)')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false });
+  myFavorites = (favoriteRows || []).filter(f => f.projects);
+
   myTasks = (assignedRows || [])
     .map(r => r.project_tasks)
     .filter(tk => tk && tk.status !== 'approved')
@@ -171,6 +179,27 @@ function render(){
           <div class="card-links">
             <a class="view-project-link" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a>
             <a class="view-project-link" href="project.html?id=${p.id}">${t('feed.lets_do_it')}</a>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="section-block"><h2>${t('dashboard.my_favorites')}</h2>`;
+  if (myFavorites.length === 0){
+    html += `<p class="credits-note">${t('dashboard.no_favorites')}</p>`;
+  } else {
+    html += `<div class="dash-project-grid">`;
+    myFavorites.forEach(f => {
+      const p = f.projects;
+      html += `
+        <div class="dash-project-card">
+          <span class="role-badge">${p.stage === 'finish' ? t('project.stage_finish') : catLabel[p.category] || 'Other'}</span>
+          <h4>${escapeHTML(p.title)}</h4>
+          <div class="card-links">
+            <a class="view-project-link" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a>
           </div>
         </div>
       `;

@@ -89,7 +89,7 @@ en: {
   "signup.msg_success":"Account created! Taking you to the feed…",
   "signup.msg_confirm":"Check your email to confirm your account, then log in.",
 
-  "feed.start_project":"Start a project","feed.title_label":"Title","feed.pitch_label":"One-line pitch",
+  "feed.start_project":"Start a project","feed.title_label":"Title","feed.title_placeholder":"e.g. Clean Water for Rural Schools — keep it self-explanatory","feed.pitch_label":"One-line pitch",
   "feed.desc_label":"Description (optional)","feed.category_label":"Category","feed.type_label":"Type",
   "feed.cat.community":"Community","feed.cat.tech":"Tech","feed.cat.social_impact":"Social impact",
   "feed.cat.business":"Business","feed.cat.creative":"Creative","feed.cat.other":"Other",
@@ -99,6 +99,7 @@ en: {
   "feed.filter.all_categories":"All categories","feed.filter.all_types":"All types",
   "feed.search_placeholder":"Search projects…","feed.sort.newest":"Newest","feed.sort.most_collab":"Most collaborators","feed.sort.most_funded":"Most funded",
   "feed.updates_eyebrow":"Fresh off the press","feed.updates_heading":"Latest updates","feed.updates_view":"View project →",
+  "feed.archive_eyebrow":"Been here","feed.archive_heading":"Finished projects","feed.scroll_left":"Scroll left","feed.scroll_right":"Scroll right",
   "feed.guest_banner_1":"Browsing as a guest.","feed.guest_banner_login":"Log in","feed.guest_banner_or":"or",
   "feed.guest_banner_signup":"sign up free","feed.guest_banner_2":"to support a project or start your own.",
   "feed.limit_reached_1":"You've used your free project.","feed.limit_reached_2":"for $2 (one-time) to post more.",
@@ -202,6 +203,7 @@ en: {
   "task.no_documents":"No documents yet.","task.file_too_large_10mb":"That file is too large — please choose one under 10MB.",
   "task.download":"Download","task.replace_file_optional":"Replace file (optional)","task.file_name_label":"File name","task.uploaded":"Uploaded",
   "nav.dashboard":"Dashboard","dashboard.heading":"Your projects & tasks","dashboard.my_projects":"My projects",
+  "dashboard.my_favorites":"My favorites","dashboard.no_favorites":"No favorites yet — star a project from its page to track it here.",
   "notif.heading":"Notifications","notif.mark_all_read":"Mark all read","notif.empty":"No notifications yet.",
   "dashboard.no_projects":"You're not part of any projects yet.","dashboard.role_manager":"Manager","dashboard.role_collaborator":"Collaborator",
   "dashboard.my_tasks":"My active tasks","dashboard.no_tasks":"No active tasks assigned to you right now.","dashboard.in_project":"in",
@@ -248,7 +250,8 @@ en: {
   "learnmore.current_photo":"Current photo","learnmore.remove_image":"Remove current photo","learnmore.uploading":"Uploading photo…","learnmore.file_not_image":"Please choose an image file.","learnmore.file_too_large":"That photo is too large — please choose one under 8MB.",
   "learnmore.post_needs_content":"Add at least a caption, an image, or a video.","learnmore.private_page_note":"Team member?",
   "learnmore.go_private":"Go to the private workspace →",
-  "learnmore.share":"Share","learnmore.link_copied":"Link copied to clipboard!","learnmore.default_og_description":"Together turns ideas into collaborative projects — join this one, or start your own."
+  "learnmore.share":"Share","learnmore.link_copied":"Link copied to clipboard!","learnmore.default_og_description":"Together turns ideas into collaborative projects — join this one, or start your own.",
+  "learnmore.more":"More","learnmore.contact_manager":"Contact manager","learnmore.favorite":"Favorite","learnmore.favorited":"Favorited"
 },
 
 es: {
@@ -334,7 +337,7 @@ es: {
   "signup.msg_success":"¡Cuenta creada! Te llevamos a los proyectos…",
   "signup.msg_confirm":"Revisa tu correo para confirmar tu cuenta y luego inicia sesión.",
 
-  "feed.start_project":"Iniciar un proyecto","feed.title_label":"Título","feed.pitch_label":"Descripción breve",
+  "feed.start_project":"Iniciar un proyecto","feed.title_label":"Título","feed.title_placeholder":"ej. Agua Limpia para Escuelas Rurales — que sea autoexplicativo","feed.pitch_label":"Descripción breve",
   "feed.desc_label":"Descripción (opcional)","feed.category_label":"Categoría","feed.type_label":"Tipo",
   "feed.cat.community":"Comunidad","feed.cat.tech":"Tecnología","feed.cat.social_impact":"Impacto social",
   "feed.cat.business":"Negocios","feed.cat.creative":"Creativo","feed.cat.other":"Otro",
@@ -344,6 +347,7 @@ es: {
   "feed.filter.all_categories":"Todas las categorías","feed.filter.all_types":"Todos los tipos",
   "feed.search_placeholder":"Buscar proyectos…","feed.sort.newest":"Más recientes","feed.sort.most_collab":"Más colaboradores","feed.sort.most_funded":"Más financiados",
   "feed.updates_eyebrow":"Recién salido del horno","feed.updates_heading":"Últimas novedades","feed.updates_view":"Ver proyecto →",
+  "feed.archive_eyebrow":"Pasaron por aquí","feed.archive_heading":"Proyectos finalizados","feed.scroll_left":"Desplazar a la izquierda","feed.scroll_right":"Desplazar a la derecha",
   "feed.guest_banner_1":"Navegando como invitado.","feed.guest_banner_login":"Inicia sesión","feed.guest_banner_or":"o",
   "feed.guest_banner_signup":"regístrate gratis","feed.guest_banner_2":"para apoyar un proyecto o iniciar el tuyo.",
   "feed.limit_reached_1":"Ya usaste tu proyecto gratuito.","feed.limit_reached_2":"por $2 (pago único) para publicar más.",
@@ -447,6 +451,7 @@ es: {
   "task.no_documents":"Aún no hay documentos.","task.file_too_large_10mb":"Ese archivo es demasiado grande — elige uno de menos de 10MB.",
   "task.download":"Descargar","task.replace_file_optional":"Reemplazar archivo (opcional)","task.file_name_label":"Nombre del archivo","task.uploaded":"Subido",
   "nav.dashboard":"Panel","dashboard.heading":"Tus proyectos y tareas","dashboard.my_projects":"Mis proyectos",
+  "dashboard.my_favorites":"Mis favoritos","dashboard.no_favorites":"Aún no hay favoritos — marca un proyecto desde su página para seguirlo aquí.",
   "notif.heading":"Notificaciones","notif.mark_all_read":"Marcar todo leído","notif.empty":"Aún no hay notificaciones.",
   "dashboard.no_projects":"Aún no formas parte de ningún proyecto.","dashboard.role_manager":"Gestor","dashboard.role_collaborator":"Colaborador",
   "dashboard.my_tasks":"Mis tareas activas","dashboard.no_tasks":"No tienes tareas activas asignadas por ahora.","dashboard.in_project":"en",
@@ -493,7 +498,8 @@ es: {
   "learnmore.current_photo":"Foto actual","learnmore.remove_image":"Eliminar foto actual","learnmore.uploading":"Subiendo foto…","learnmore.file_not_image":"Por favor elige un archivo de imagen.","learnmore.file_too_large":"Esa foto es demasiado grande — elige una de menos de 8MB.",
   "learnmore.post_needs_content":"Añade al menos un texto, una imagen o un video.","learnmore.private_page_note":"¿Eres parte del equipo?",
   "learnmore.go_private":"Ir al espacio de trabajo privado →",
-  "learnmore.share":"Compartir","learnmore.link_copied":"¡Enlace copiado al portapapeles!","learnmore.default_og_description":"Together convierte ideas en proyectos colaborativos — únete a este o comienza el tuyo."
+  "learnmore.share":"Compartir","learnmore.link_copied":"¡Enlace copiado al portapapeles!","learnmore.default_og_description":"Together convierte ideas en proyectos colaborativos — únete a este o comienza el tuyo.",
+  "learnmore.more":"Más","learnmore.contact_manager":"Contactar al gestor","learnmore.favorite":"Favorito","learnmore.favorited":"En favoritos"
 },
 
 fr: {
@@ -579,7 +585,7 @@ fr: {
   "signup.msg_success":"Compte créé ! Direction le flux…",
   "signup.msg_confirm":"Vérifiez vos e-mails pour confirmer votre compte, puis connectez-vous.",
 
-  "feed.start_project":"Lancer un projet","feed.title_label":"Titre","feed.pitch_label":"Résumé en une ligne",
+  "feed.start_project":"Lancer un projet","feed.title_label":"Titre","feed.title_placeholder":"ex. Eau potable pour les écoles rurales — restez explicite","feed.pitch_label":"Résumé en une ligne",
   "feed.desc_label":"Description (optionnel)","feed.category_label":"Catégorie","feed.type_label":"Type",
   "feed.cat.community":"Communauté","feed.cat.tech":"Technologie","feed.cat.social_impact":"Impact social",
   "feed.cat.business":"Entreprise","feed.cat.creative":"Créatif","feed.cat.other":"Autre",
@@ -589,6 +595,7 @@ fr: {
   "feed.filter.all_categories":"Toutes les catégories","feed.filter.all_types":"Tous les types",
   "feed.search_placeholder":"Rechercher des projets…","feed.sort.newest":"Plus récents","feed.sort.most_collab":"Plus de collaborateurs","feed.sort.most_funded":"Plus financés",
   "feed.updates_eyebrow":"Tout frais","feed.updates_heading":"Dernières actus","feed.updates_view":"Voir le projet →",
+  "feed.archive_eyebrow":"Déjà passés par ici","feed.archive_heading":"Projets terminés","feed.scroll_left":"Défiler à gauche","feed.scroll_right":"Défiler à droite",
   "feed.guest_banner_1":"Navigation en tant qu'invité.","feed.guest_banner_login":"Connectez-vous","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"inscrivez-vous gratuitement","feed.guest_banner_2":"pour soutenir un projet ou lancer le vôtre.",
   "feed.limit_reached_1":"Vous avez utilisé votre projet gratuit.","feed.limit_reached_2":"pour $2 (paiement unique) afin d'en publier plus.",
@@ -692,6 +699,7 @@ fr: {
   "task.no_documents":"Pas encore de documents.","task.file_too_large_10mb":"Ce fichier est trop volumineux — choisissez-en un de moins de 10 Mo.",
   "task.download":"Télécharger","task.replace_file_optional":"Remplacer le fichier (optionnel)","task.file_name_label":"Nom du fichier","task.uploaded":"Téléversé",
   "nav.dashboard":"Tableau de bord","dashboard.heading":"Vos projets et tâches","dashboard.my_projects":"Mes projets",
+  "dashboard.my_favorites":"Mes favoris","dashboard.no_favorites":"Pas encore de favoris — mettez une étoile sur un projet depuis sa page pour le suivre ici.",
   "notif.heading":"Notifications","notif.mark_all_read":"Tout marquer comme lu","notif.empty":"Pas encore de notifications.",
   "dashboard.no_projects":"Vous ne faites partie d'aucun projet pour l'instant.","dashboard.role_manager":"Gestionnaire","dashboard.role_collaborator":"Collaborateur",
   "dashboard.my_tasks":"Mes tâches actives","dashboard.no_tasks":"Aucune tâche active ne vous est assignée pour le moment.","dashboard.in_project":"dans",
@@ -738,7 +746,8 @@ fr: {
   "learnmore.current_photo":"Photo actuelle","learnmore.remove_image":"Supprimer la photo actuelle","learnmore.uploading":"Téléversement de la photo…","learnmore.file_not_image":"Veuillez choisir un fichier image.","learnmore.file_too_large":"Cette photo est trop grande — choisissez-en une de moins de 8 Mo.",
   "learnmore.post_needs_content":"Ajoutez au moins un texte, une image ou une vidéo.","learnmore.private_page_note":"Membre de l'équipe ?",
   "learnmore.go_private":"Aller à l'espace de travail privé →",
-  "learnmore.share":"Partager","learnmore.link_copied":"Lien copié dans le presse-papiers !","learnmore.default_og_description":"Together transforme des idées en projets collaboratifs — rejoignez celui-ci, ou lancez le vôtre."
+  "learnmore.share":"Partager","learnmore.link_copied":"Lien copié dans le presse-papiers !","learnmore.default_og_description":"Together transforme des idées en projets collaboratifs — rejoignez celui-ci, ou lancez le vôtre.",
+  "learnmore.more":"Plus","learnmore.contact_manager":"Contacter le gestionnaire","learnmore.favorite":"Favori","learnmore.favorited":"Dans les favoris"
 },
 
 pt: {
@@ -824,7 +833,7 @@ pt: {
   "signup.msg_success":"Conta criada! Levando você para o feed…",
   "signup.msg_confirm":"Verifique seu e-mail para confirmar sua conta e depois faça login.",
 
-  "feed.start_project":"Iniciar um projeto","feed.title_label":"Título","feed.pitch_label":"Descrição em uma linha",
+  "feed.start_project":"Iniciar um projeto","feed.title_label":"Título","feed.title_placeholder":"ex. Água Limpa para Escolas Rurais — seja autoexplicativo","feed.pitch_label":"Descrição em uma linha",
   "feed.desc_label":"Descrição (opcional)","feed.category_label":"Categoria","feed.type_label":"Tipo",
   "feed.cat.community":"Comunidade","feed.cat.tech":"Tecnologia","feed.cat.social_impact":"Impacto social",
   "feed.cat.business":"Negócios","feed.cat.creative":"Criativo","feed.cat.other":"Outro",
@@ -834,6 +843,7 @@ pt: {
   "feed.filter.all_categories":"Todas as categorias","feed.filter.all_types":"Todos os tipos",
   "feed.search_placeholder":"Buscar projetos…","feed.sort.newest":"Mais recentes","feed.sort.most_collab":"Mais colaboradores","feed.sort.most_funded":"Mais financiados",
   "feed.updates_eyebrow":"Saindo do forno","feed.updates_heading":"Últimas novidades","feed.updates_view":"Ver projeto →",
+  "feed.archive_eyebrow":"Passaram por aqui","feed.archive_heading":"Projetos finalizados","feed.scroll_left":"Rolar para a esquerda","feed.scroll_right":"Rolar para a direita",
   "feed.guest_banner_1":"Navegando como visitante.","feed.guest_banner_login":"Entre","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"cadastre-se grátis","feed.guest_banner_2":"para apoiar um projeto ou iniciar o seu.",
   "feed.limit_reached_1":"Você já usou seu projeto gratuito.","feed.limit_reached_2":"por $2 (pagamento único) para publicar mais.",
@@ -937,6 +947,7 @@ pt: {
   "task.no_documents":"Ainda não há documentos.","task.file_too_large_10mb":"Esse arquivo é grande demais — escolha um com menos de 10MB.",
   "task.download":"Baixar","task.replace_file_optional":"Substituir arquivo (opcional)","task.file_name_label":"Nome do arquivo","task.uploaded":"Enviado",
   "nav.dashboard":"Painel","dashboard.heading":"Seus projetos e tarefas","dashboard.my_projects":"Meus projetos",
+  "dashboard.my_favorites":"Meus favoritos","dashboard.no_favorites":"Ainda não há favoritos — marque um projeto na página dele para acompanhar aqui.",
   "notif.heading":"Notificações","notif.mark_all_read":"Marcar tudo como lido","notif.empty":"Ainda não há notificações.",
   "dashboard.no_projects":"Você ainda não faz parte de nenhum projeto.","dashboard.role_manager":"Gestor","dashboard.role_collaborator":"Colaborador",
   "dashboard.my_tasks":"Minhas tarefas ativas","dashboard.no_tasks":"Nenhuma tarefa ativa atribuída a você no momento.","dashboard.in_project":"em",
@@ -983,7 +994,8 @@ pt: {
   "learnmore.current_photo":"Foto atual","learnmore.remove_image":"Remover foto atual","learnmore.uploading":"Enviando foto…","learnmore.file_not_image":"Por favor escolha um arquivo de imagem.","learnmore.file_too_large":"Essa foto é grande demais — escolha uma com menos de 8MB.",
   "learnmore.post_needs_content":"Adicione pelo menos um texto, uma imagem ou um vídeo.","learnmore.private_page_note":"É parte da equipe?",
   "learnmore.go_private":"Ir para o espaço de trabalho privado →",
-  "learnmore.share":"Compartilhar","learnmore.link_copied":"Link copiado para a área de transferência!","learnmore.default_og_description":"Together transforma ideias em projetos colaborativos — participe deste ou comece o seu."
+  "learnmore.share":"Compartilhar","learnmore.link_copied":"Link copiado para a área de transferência!","learnmore.default_og_description":"Together transforma ideias em projetos colaborativos — participe deste ou comece o seu.",
+  "learnmore.more":"Mais","learnmore.contact_manager":"Contatar gestor","learnmore.favorite":"Favoritar","learnmore.favorited":"Favoritado"
 }
 };
 
