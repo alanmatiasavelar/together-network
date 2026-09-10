@@ -1864,3 +1864,35 @@ as $$
 $$;
 
 grant execute on function public.increment_support_clicks(uuid) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- AI TAB: a private, per-user AI assistant conversation scoped to a
+-- project. Only the message owner can see their own thread. Writes go
+-- through the gemini-chat Edge Function exclusively (service role) — no
+-- insert policy for clients — so the function can verify team membership,
+-- rate-limit, and call the Gemini API before anything is stored. The
+-- Edge Function itself lives in Supabase (not in this repo) — deployed
+-- via the Supabase MCP, source kept for reference in
+-- supabase/functions/gemini-chat/index.ts.
+-- ---------------------------------------------------------------------------
+create table if not exists project_ai_messages (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  user_id uuid not null,
+  role text not null check (role in ('user','assistant')),
+  content text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_ai_messages_project_user_idx
+  on project_ai_messages (project_id, user_id, created_at);
+
+alter table project_ai_messages enable row level security;
+
+drop policy if exists "Users can read their own AI messages" on project_ai_messages;
+create policy "Users can read their own AI messages" on project_ai_messages
+  for select using (auth.uid() = user_id and public.is_project_team_member(project_id));
+
+drop policy if exists "Users can clear their own AI messages" on project_ai_messages;
+create policy "Users can clear their own AI messages" on project_ai_messages
+  for delete using (auth.uid() = user_id);

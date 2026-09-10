@@ -68,7 +68,7 @@ const projectId = params.get('id');
 const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
-const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs', 'team', 'links'];
+const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs', 'team', 'links', 'ai'];
 const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
 
 let currentUser = null;
@@ -187,7 +187,8 @@ async function loadProject(){
       project_activities(*),
       project_activity_links(*),
       project_wbs_items(*),
-      project_links(*)`)
+      project_links(*),
+      project_ai_messages(*)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -316,6 +317,7 @@ function render(){
       <button data-tab="wbs" class="${activeTab === 'wbs' ? 'active' : ''}">${t('project.tab_wbs')}</button>
       <button data-tab="team" class="${activeTab === 'team' ? 'active' : ''}">${t('project.tab_team')}</button>
       <button data-tab="links" class="${activeTab === 'links' ? 'active' : ''}">${t('project.tab_links')}</button>
+      <button data-tab="ai" class="${activeTab === 'ai' ? 'active' : ''}">${t('project.tab_ai')}</button>
       <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
@@ -329,6 +331,7 @@ function render(){
     <div class="tab-panel" data-panel="wbs" ${activeTab !== 'wbs' ? 'hidden' : ''}>${renderWbsPanel()}</div>
     <div class="tab-panel" data-panel="team" ${activeTab !== 'team' ? 'hidden' : ''}>${renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab)}</div>
     <div class="tab-panel" data-panel="links" ${activeTab !== 'links' ? 'hidden' : ''}>${renderLinksPanel()}</div>
+    <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
   `;
 
   content.innerHTML = html;
@@ -1047,6 +1050,35 @@ function renderLinksPanel(){
     `;
   }
 
+  return html;
+}
+
+function renderAiPanel(){
+  const messages = (project.project_ai_messages || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  let html = `<p class="credits-note" style="margin-bottom:12px;">${t('project.ai_intro')}</p>`;
+  html += `<div class="chat-log" id="aiLog">`;
+  if (messages.length === 0){
+    html += `<p class="credits-note">${t('project.ai_empty')}</p>`;
+  } else {
+    messages.forEach(m => {
+      const when = new Date(m.created_at).toLocaleString(currentLang, { dateStyle: 'medium', timeStyle: 'short' });
+      html += `
+        <div class="chat-msg ${m.role === 'user' ? 'own' : 'other'}">
+          <div class="chat-msg-bubble">${escapeHTML(m.content)}</div>
+          <div class="chat-msg-time">${escapeHTML(when)}</div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
+  html += `
+    <form id="aiForm" class="chat-form">
+      <textarea name="message" id="aiInput" rows="1" placeholder="${t('project.ai_placeholder')}" required maxlength="2000"></textarea>
+      <button class="btn btn-primary btn-small" type="submit" id="aiSendBtn">${t('project.ai_send')}</button>
+    </form>
+    <p class="form-msg" id="aiMsg"></p>
+    ${messages.length > 0 ? `<button class="icon-btn" id="aiClearBtn" style="margin-top:8px;">${t('project.ai_clear')}</button>` : ''}
+  `;
   return html;
 }
 
@@ -1772,6 +1804,35 @@ function wireEvents(){
     await supabaseClient.from('project_links').delete().eq('id', btn.dataset.deleteLink2);
     loadProject();
   }));
+
+  // --- AI tab ---
+  const aiForm = document.getElementById('aiForm');
+  if (aiForm) aiForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('aiMsg');
+    const sendBtn = document.getElementById('aiSendBtn');
+    const input = document.getElementById('aiInput');
+    const message = input.value.trim();
+    if (!message) return;
+    msg.textContent = ''; msg.className = 'form-msg';
+    sendBtn.disabled = true; input.disabled = true;
+    const { error } = await supabaseClient.functions.invoke('gemini-chat', { body: { project_id: projectId, message } });
+    sendBtn.disabled = false; input.disabled = false;
+    if (error){
+      let errMsg = error.message;
+      try { const body = await error.context.json(); if (body?.error) errMsg = body.error; } catch (e2) {}
+      msg.textContent = errMsg; msg.className = 'form-msg error';
+      return;
+    }
+    input.value = '';
+    loadProject();
+  });
+  const aiClearBtn = document.getElementById('aiClearBtn');
+  if (aiClearBtn) aiClearBtn.addEventListener('click', async () => {
+    if (!confirm(t('project.ai_clear_confirm'))) return;
+    await supabaseClient.from('project_ai_messages').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
+    loadProject();
+  });
 
   // --- Admin controls ---
   const adminDeleteBtn = document.getElementById('adminDeleteProjectBtn');
