@@ -1055,7 +1055,12 @@ function renderLinksPanel(){
 
 function renderAiPanel(){
   const messages = (project.project_ai_messages || []).slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  let html = `<p class="credits-note" style="margin-bottom:12px;">${t('project.ai_intro')}</p>`;
+  let html = `
+    <div class="chat-head-row">
+      <p class="credits-note" style="margin:0;">${t('project.ai_intro')}</p>
+      ${messages.length > 0 ? `<button class="icon-btn" id="aiClearBtn" type="button">${t('project.ai_clear')}</button>` : ''}
+    </div>
+  `;
   html += `<div class="chat-log" id="aiLog">`;
   if (messages.length === 0){
     html += `<p class="credits-note">${t('project.ai_empty')}</p>`;
@@ -1074,12 +1079,16 @@ function renderAiPanel(){
   html += `
     <form id="aiForm" class="chat-form">
       <textarea name="message" id="aiInput" rows="1" placeholder="${t('project.ai_placeholder')}" required maxlength="2000"></textarea>
-      <button class="btn btn-primary btn-small" type="submit" id="aiSendBtn">${t('project.ai_send')}</button>
+      <button class="btn btn-primary btn-small" type="submit" id="aiSendBtn" disabled>${t('project.ai_send')}</button>
     </form>
     <p class="form-msg" id="aiMsg"></p>
-    ${messages.length > 0 ? `<button class="icon-btn" id="aiClearBtn" style="margin-top:8px;">${t('project.ai_clear')}</button>` : ''}
   `;
   return html;
+}
+
+function autoGrowTextarea(el){
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 }
 
 async function recalcAndSaveSchedule(){
@@ -1807,26 +1816,49 @@ function wireEvents(){
 
   // --- AI tab ---
   const aiForm = document.getElementById('aiForm');
-  if (aiForm) aiForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const msg = document.getElementById('aiMsg');
-    const sendBtn = document.getElementById('aiSendBtn');
-    const input = document.getElementById('aiInput');
-    const message = input.value.trim();
-    if (!message) return;
-    msg.textContent = ''; msg.className = 'form-msg';
-    sendBtn.disabled = true; input.disabled = true;
-    const { error } = await supabaseClient.functions.invoke('gemini-chat', { body: { project_id: projectId, message } });
-    sendBtn.disabled = false; input.disabled = false;
-    if (error){
-      let errMsg = error.message;
-      try { const body = await error.context.json(); if (body?.error) errMsg = body.error; } catch (e2) {}
-      msg.textContent = errMsg; msg.className = 'form-msg error';
-      return;
-    }
-    input.value = '';
-    loadProject();
-  });
+  if (aiForm){
+    const aiTextarea = document.getElementById('aiInput');
+    const aiSendBtn = document.getElementById('aiSendBtn');
+
+    autoGrowTextarea(aiTextarea);
+
+    aiTextarea.addEventListener('input', () => {
+      aiSendBtn.disabled = aiTextarea.value.trim().length === 0;
+      autoGrowTextarea(aiTextarea);
+    });
+
+    aiTextarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey){
+        e.preventDefault();
+        if (!aiSendBtn.disabled) aiForm.requestSubmit();
+      }
+    });
+
+    aiForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('aiMsg');
+      const message = aiTextarea.value.trim();
+      if (!message) return;
+      msg.textContent = ''; msg.className = 'form-msg';
+      aiSendBtn.disabled = true; aiTextarea.disabled = true;
+      const { error } = await supabaseClient.functions.invoke('gemini-chat', { body: { project_id: projectId, message } });
+      aiTextarea.disabled = false;
+      if (error){
+        let errMsg = error.message;
+        try { const body = await error.context.json(); if (body?.error) errMsg = body.error; } catch (e2) {}
+        msg.textContent = errMsg; msg.className = 'form-msg error';
+        aiSendBtn.disabled = false;
+        aiTextarea.focus();
+        return;
+      }
+      aiTextarea.value = '';
+      autoGrowTextarea(aiTextarea);
+      loadProject();
+    });
+  }
+  const aiLog = document.getElementById('aiLog');
+  if (aiLog) aiLog.scrollTop = aiLog.scrollHeight;
+
   const aiClearBtn = document.getElementById('aiClearBtn');
   if (aiClearBtn) aiClearBtn.addEventListener('click', async () => {
     if (!confirm(t('project.ai_clear_confirm'))) return;
