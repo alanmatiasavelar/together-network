@@ -85,11 +85,41 @@ let editingWbsId = null;
 let editingLinkId = null;
 let ganttZoom = 1;
 let wbsZoom = 1;
+let ganttFitApplied = false;
+let wbsFitApplied = false;
 
 const ZOOM_MIN = 0.05, ZOOM_MAX = 2.5, ZOOM_FACTOR = 1.25;
+const AUTO_FIT_MIN = 0.35;
 
 function clampZoom(z){
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+}
+
+function computeFitZoom(scrollElId, checkHeight){
+  const el = document.getElementById(scrollElId);
+  if (!el || !el.clientWidth || !el.scrollWidth) return null;
+  let fit = el.clientWidth / el.scrollWidth;
+  if (checkHeight && el.clientHeight && el.scrollHeight){
+    fit = Math.min(fit, el.clientHeight / el.scrollHeight);
+  }
+  if (fit >= 1) return 1;
+  return clampZoom(Math.max(AUTO_FIT_MIN, fit));
+}
+
+// Auto-shrink the Schedule/WBS charts to fit the very first time each is
+// viewed, so they're readable without a manual zoom-out or horizontal
+// scroll. Only fires once per tab per page load — later zoom changes are
+// left entirely up to the user.
+function maybeAutoFitActiveTab(){
+  if (activeTab === 'schedule' && !ganttFitApplied){
+    ganttFitApplied = true;
+    const fit = computeFitZoom('ganttScroll', false);
+    if (fit !== null && fit < ganttZoom){ ganttZoom = fit; render(); }
+  } else if (activeTab === 'wbs' && !wbsFitApplied){
+    wbsFitApplied = true;
+    const fit = computeFitZoom('wbsScroll', true);
+    if (fit !== null && fit < wbsZoom){ wbsZoom = fit; render(); }
+  }
 }
 
 function renderChartToolbar(prefix, zoom){
@@ -198,6 +228,7 @@ async function loadProject(){
   project = data;
   await loadFeedPosts();
   render();
+  maybeAutoFitActiveTab();
 }
 
 const FEED_PAGE_SIZE = 15;
@@ -1294,6 +1325,7 @@ function wireEvents(){
     activeTab = btn.dataset.tab;
     content.querySelectorAll('.tab-bar button').forEach(b => b.classList.toggle('active', b === btn));
     content.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== activeTab; });
+    maybeAutoFitActiveTab();
   }));
 
   const requestBtn = document.getElementById('requestJoinBtn');
