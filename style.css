@@ -417,22 +417,6 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
   padding:24px;text-align:center;
 }
 
-/* ---------- Checkout: PayPal/card + PIX ---------- */
-.checkout-method{
-  background:var(--paper);border:1px solid var(--line);border-radius:var(--radius-md);
-  padding:20px;margin-bottom:14px;
-}
-.checkout-method h3{font-size:15.5px;margin-bottom:8px;}
-.checkout-divider{
-  text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;
-  color:var(--ink-soft);text-transform:uppercase;letter-spacing:.08em;margin:10px 0;
-}
-.pix-key-box{
-  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  background:var(--mist);border:1px solid var(--line);border-radius:10px;
-  padding:10px 14px;margin:10px 0;
-}
-.pix-key-box code{font-family:'IBM Plex Mono',monospace;font-size:13.5px;word-break:break-all;flex:1;}
 
 /* ---------- Costs tab ---------- */
 .costs-total-bar{

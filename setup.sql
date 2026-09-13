@@ -1896,3 +1896,53 @@ create policy "Users can read their own AI messages" on project_ai_messages
 drop policy if exists "Users can clear their own AI messages" on project_ai_messages;
 create policy "Users can clear their own AI messages" on project_ai_messages
   for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- PREMIUM VIA STRIPE: premium.html now sends users through a real Stripe
+-- Checkout subscription instead of the old manual PayPal/PIX honor-system
+-- flow. Two Edge Functions handle it (not in this repo as runnable
+-- migrations — deployed via the Supabase MCP, source kept for reference in
+-- supabase/functions/create-checkout-session/index.ts and
+-- supabase/functions/stripe-webhook/index.ts):
+--   - create-checkout-session: authenticated, creates a Stripe Checkout
+--     session for the logged-in user and returns its URL.
+--   - stripe-webhook: no JWT (Stripe can't send one) — verifies Stripe's own
+--     signature instead. On checkout.session.completed it flips is_premium
+--     on via the service role; on customer.subscription.deleted it flips it
+--     back off. Requires STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET set as
+--     Edge Function secrets (Dashboard → Edge Functions → Secrets — no MCP
+--     tool sets these).
+--
+-- guard_profile_updates() (defined above) is extended with a service_role
+-- bypass so the webhook can write is_premium directly — the same trigger
+-- still blocks any client (anon/authenticated) from setting it themselves.
+-- ---------------------------------------------------------------------------
+alter table profiles add column if not exists stripe_customer_id text;
+alter table profiles add column if not exists stripe_subscription_id text;
+create index if not exists idx_profiles_stripe_customer_id on profiles(stripe_customer_id);
+
+create or replace function public.guard_profile_updates()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  is_admin boolean;
+begin
+  if auth.role() = 'service_role' then
+    -- Trusted server-side writers only: the stripe-webhook Edge Function
+    -- (payment confirmed by Stripe itself, not by the client).
+    return new;
+  end if;
+
+  select (email = 'aolbr_mail@yahoo.com.br') into is_admin from public.profiles where id = auth.uid();
+  if not coalesce(is_admin, false) then
+    new.is_premium = old.is_premium;
+    if new.premium_status is distinct from old.premium_status and new.premium_status <> 'pending' then
+      new.premium_status = old.premium_status;
+    end if;
+  end if;
+  return new;
+end;
+$$;
