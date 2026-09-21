@@ -96,6 +96,29 @@
   .nav-links a:hover{color:var(--blue-deep);}
   .nav-auth{display:flex;align-items:center;gap:10px;flex:none;}
   .nav-auth .btn{white-space:nowrap;}
+
+  /* Nav content (brand + auth buttons + notif bell + lang switcher) is wider
+     than a phone screen at full desktop sizing, which pushed the language
+     switcher off-screen entirely. Tighten sizing and let the row wrap as a
+     guaranteed fallback so the page itself never gets wider than the
+     viewport, regardless of display-name length or login state. */
+  @media(max-width:640px){
+    .nav-inner{padding:10px 16px;gap:8px;row-gap:8px;flex-wrap:wrap;}
+    .brand img{height:32px;}
+    .nav-auth{gap:6px;flex-wrap:wrap;row-gap:6px;}
+    .nav-auth .btn{padding:7px 13px;font-size:12.5px;}
+    .user-chip{padding:5px 10px 5px 4px;font-size:12px;}
+    .user-chip .avatar{width:20px;height:20px;font-size:10px;}
+    .notif-bell{width:32px;height:32px;font-size:14px;}
+    .lang-switcher{padding:5px 8px;font-size:10.5px;}
+  }
+
+  /* Bigger brand presence on the home page's header specifically — scoped to
+     .nav-home (index.html only) and to non-mobile widths so it doesn't eat
+     back into the tight mobile nav budget above. */
+  @media(min-width:641px){
+    .nav-home .brand img{height:64px;}
+  }
   .user-chip{
     display:flex;align-items:center;gap:8px;
     font-size:14px;font-weight:600;color:var(--ink);

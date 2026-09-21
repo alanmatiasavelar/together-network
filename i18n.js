@@ -9,6 +9,7 @@ const TRANSLATIONS = {
 en: {
   "nav.feed":"Feed","nav.home":"Home","nav.how":"How it works","nav.pricing":"Pricing",
   "nav.login":"Log in","nav.signup":"Sign up","nav.logout":"Log out","nav.go_to_feed":"Go to feed",
+  "nav.start_project":"Start a new project",
   "footer.tagline":"Join efforts, not feeds.","footer.contact":"Contact →","footer.terms":"Terms of Use",
   "common.back_to_feed":"← Back to feed","common.back_to_home":"← Back to home",
   "common.save":"Save","common.update":"Update","common.add":"Add","common.cancel":"Cancel",
@@ -251,6 +252,7 @@ en: {
 es: {
   "nav.feed":"Proyectos","nav.home":"Inicio","nav.how":"Cómo funciona","nav.pricing":"Precios",
   "nav.login":"Iniciar sesión","nav.signup":"Registrarse","nav.logout":"Cerrar sesión","nav.go_to_feed":"Ir a proyectos",
+  "nav.start_project":"Iniciar un nuevo proyecto",
   "footer.tagline":"Une esfuerzos, no feeds.","footer.contact":"Contacto →","footer.terms":"Términos de uso",
   "common.back_to_feed":"← Volver a proyectos","common.back_to_home":"← Volver al inicio",
   "common.save":"Guardar","common.update":"Actualizar","common.add":"Añadir","common.cancel":"Cancelar",
@@ -493,6 +495,7 @@ es: {
 fr: {
   "nav.feed":"Projets","nav.home":"Accueil","nav.how":"Comment ça marche","nav.pricing":"Tarifs",
   "nav.login":"Se connecter","nav.signup":"S'inscrire","nav.logout":"Se déconnecter","nav.go_to_feed":"Voir les projets",
+  "nav.start_project":"Démarrer un nouveau projet",
   "footer.tagline":"Unissez vos efforts, pas vos flux.","footer.contact":"Contact →","footer.terms":"Conditions d'utilisation",
   "common.back_to_feed":"← Retour aux projets","common.back_to_home":"← Retour à l'accueil",
   "common.save":"Enregistrer","common.update":"Mettre à jour","common.add":"Ajouter","common.cancel":"Annuler",
@@ -735,6 +738,7 @@ fr: {
 pt: {
   "nav.feed":"Projetos","nav.home":"Início","nav.how":"Como funciona","nav.pricing":"Preços",
   "nav.login":"Entrar","nav.signup":"Cadastrar","nav.logout":"Sair","nav.go_to_feed":"Ir para projetos",
+  "nav.start_project":"Iniciar um novo projeto",
   "footer.tagline":"Junte esforços, não feeds.","footer.contact":"Contato →","footer.terms":"Termos de uso",
   "common.back_to_feed":"← Voltar para projetos","common.back_to_home":"← Voltar ao início",
   "common.save":"Salvar","common.update":"Atualizar","common.add":"Adicionar","common.cancel":"Cancelar",
