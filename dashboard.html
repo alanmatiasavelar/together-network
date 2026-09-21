@@ -129,7 +129,7 @@ async function loadDashboard(){
 
   const { data: profileRow } = await supabaseClient
     .from('profiles')
-    .select('social_platform, social_url')
+    .select('social_platform, social_url, cv_url')
     .eq('id', currentUser.id)
     .single();
   myProfile = profileRow || {};
@@ -265,9 +265,36 @@ function render(){
     </div>
   `;
 
+  html += `
+    <div class="section-block">
+      <details class="add-inline">
+        <summary>${t('dashboard.cv_title')}</summary>
+        <p class="credits-note" style="margin-bottom:10px;">${t('dashboard.cv_desc')}</p>
+        ${myProfile.cv_url ? `
+          <div class="share-link-box">
+            <code id="cvLinkText">${escapeHTML(myProfile.cv_url)}</code>
+            <button class="btn btn-ghost btn-small" id="copyCvLink" type="button">${t('common.copy')}</button>
+          </div>
+          <div class="item-actions" style="margin-bottom:14px;">
+            <a class="icon-btn" href="${escapeHTML(myProfile.cv_url)}" target="_blank" rel="noopener noreferrer">👁 ${t('dashboard.cv_view')}</a>
+            <button class="icon-btn" id="removeCvBtn" type="button">🗑 ${t('dashboard.cv_remove')}</button>
+          </div>
+        ` : ''}
+        <form id="cvForm" class="auth-form">
+          <label>${myProfile.cv_url ? t('dashboard.cv_replace_cta') : t('dashboard.cv_upload_cta')}<input type="file" name="cv" id="cvFile" accept="application/pdf,.pdf" required></label>
+          <button class="btn btn-ghost btn-small" type="submit">${myProfile.cv_url ? t('dashboard.cv_replace_cta') : t('dashboard.cv_upload_cta')}</button>
+          <p class="form-msg" id="cvMsg"></p>
+        </form>
+      </details>
+    </div>
+  `;
+
   content.innerHTML = html;
   wireAccountForm();
 }
+
+const MAX_CV_BYTES = 10 * 1024 * 1024; // 10MB
+const CV_BUCKET = 'user-cvs';
 
 const SOCIAL_URL_PATTERNS = {
   instagram: /^https:\/\/(www\.)?instagram\.com\/[A-Za-z0-9_.]+\/?$/,
@@ -309,6 +336,69 @@ function wireAccountForm(){
     myProfile = { social_platform: platform, social_url: platform ? url : null };
     msg.textContent = t('dashboard.social_saved');
     msg.className = 'form-msg ok';
+  });
+
+  const cvForm = document.getElementById('cvForm');
+  if (cvForm) cvForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('cvMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fileInput = document.getElementById('cvFile');
+    const file = fileInput.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf'){
+      msg.textContent = t('dashboard.cv_err_type');
+      msg.className = 'form-msg error';
+      return;
+    }
+    if (file.size > MAX_CV_BYTES){
+      msg.textContent = t('dashboard.cv_err_size');
+      msg.className = 'form-msg error';
+      return;
+    }
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    msg.textContent = t('dashboard.cv_uploading');
+    const path = `${currentUser.id}/cv.pdf`;
+    const { error: upErr } = await supabaseClient.storage.from(CV_BUCKET).upload(path, file, { contentType: 'application/pdf', upsert: true });
+    if (upErr){
+      submitBtn.disabled = false;
+      msg.textContent = upErr.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    const { data: urlData } = supabaseClient.storage.from(CV_BUCKET).getPublicUrl(path);
+    const { error: dbErr } = await supabaseClient.from('profiles').update({ cv_url: urlData.publicUrl }).eq('id', currentUser.id);
+    submitBtn.disabled = false;
+    if (dbErr){
+      msg.textContent = dbErr.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    myProfile.cv_url = urlData.publicUrl;
+    render();
+  });
+
+  const copyCvLink = document.getElementById('copyCvLink');
+  if (copyCvLink) copyCvLink.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(myProfile.cv_url);
+      copyCvLink.textContent = t('common.copied');
+      setTimeout(() => { copyCvLink.textContent = t('common.copy'); }, 1500);
+    } catch (err) {
+      // clipboard API unavailable — the link is already shown as selectable text, so this is a soft failure
+    }
+  });
+
+  const removeCvBtn = document.getElementById('removeCvBtn');
+  if (removeCvBtn) removeCvBtn.addEventListener('click', async () => {
+    if (!confirm(t('dashboard.cv_remove_confirm'))) return;
+    removeCvBtn.disabled = true;
+    const path = `${currentUser.id}/cv.pdf`;
+    await supabaseClient.storage.from(CV_BUCKET).remove([path]);
+    await supabaseClient.from('profiles').update({ cv_url: null }).eq('id', currentUser.id);
+    myProfile.cv_url = null;
+    render();
   });
 
   const form = document.getElementById('changePasswordForm');

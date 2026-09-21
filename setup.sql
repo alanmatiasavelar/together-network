@@ -1971,3 +1971,34 @@ drop trigger if exists trg_projects_touch_updated_at on projects;
 create trigger trg_projects_touch_updated_at
   before update on projects
   for each row execute function public.touch_projects_updated_at();
+
+-- ---------------------------------------------------------------------------
+-- USER CV: a user can upload a CV (PDF, up to 10MB) from their dashboard and
+-- get a shareable public link. One CV per user, stored at a fixed path
+-- (<user_id>/cv.pdf) so re-uploading overwrites in place — any previously
+-- shared link keeps working and always points at the latest file.
+-- ---------------------------------------------------------------------------
+alter table profiles add column if not exists cv_url text;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('user-cvs', 'user-cvs', true, 10485760, array['application/pdf'])
+on conflict (id) do update set file_size_limit = 10485760, public = true, allowed_mime_types = array['application/pdf'];
+
+drop policy if exists "Public can view CVs" on storage.objects;
+create policy "Public can view CVs" on storage.objects
+  for select using (bucket_id = 'user-cvs');
+
+drop policy if exists "Users can upload their own CV" on storage.objects;
+create policy "Users can upload their own CV" on storage.objects
+  for insert with check (
+    bucket_id = 'user-cvs'
+    and ((storage.foldername(name))[1])::uuid = auth.uid()
+  );
+
+drop policy if exists "Users can replace their own CV" on storage.objects;
+create policy "Users can replace their own CV" on storage.objects
+  for update using (bucket_id = 'user-cvs' and owner = auth.uid());
+
+drop policy if exists "Users can delete their own CV" on storage.objects;
+create policy "Users can delete their own CV" on storage.objects
+  for delete using (bucket_id = 'user-cvs' and owner = auth.uid());

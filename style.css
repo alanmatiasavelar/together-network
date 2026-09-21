@@ -370,6 +370,14 @@
 .auth-card h1{font-size:26px;margin-bottom:8px;}
 .auth-card .auth-sub{color:var(--ink-soft);font-size:14.5px;margin-bottom:26px;}
 
+/* ---------- Copyable link/key box (CV shareable link, etc.) ---------- */
+.share-link-box{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  background:var(--mist);border:1px solid var(--line);border-radius:10px;
+  padding:10px 14px;margin:10px 0;
+}
+.share-link-box code{font-family:'IBM Plex Mono',monospace;font-size:12.5px;word-break:break-all;flex:1;}
+
 /* ---------- Home page: "happening now" centralized card ---------- */
 .news-panel{
   max-width:960px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
