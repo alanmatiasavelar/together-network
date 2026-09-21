@@ -68,13 +68,26 @@ const projectId = params.get('id');
 const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
-const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events', 'costs', 'schedule', 'wbs', 'team', 'links', 'ai'];
+const TAB_GROUPS = {
+  general: ['feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
+  pm: ['schedule', 'wbs', 'team', 'costs'],
+  se: ['requirements', 'usecases', 'architecture']
+};
+const VALID_TABS = Object.values(TAB_GROUPS).flat();
 const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
+
+function groupOfTab(tabId){
+  return Object.keys(TAB_GROUPS).find(g => TAB_GROUPS[g].includes(tabId)) || 'general';
+}
 
 let currentUser = null;
 let myCvUrl = null;
 let project = null;
 let activeTab = VALID_TABS.includes(params.get('tab')) ? params.get('tab') : 'feed';
+let activeGroup = groupOfTab(activeTab);
+// Remembers which sub-tab you were on last within each group, so switching
+// groups and back doesn't always reset to the group's first tab.
+let lastTabInGroup = { general: 'feed', pm: 'schedule', se: 'requirements', [activeGroup]: activeTab };
 let editingGoalId = null;
 let editingReqId = null;
 let editingTaskId = null;
@@ -219,7 +232,8 @@ async function loadProject(){
       project_activity_links(*),
       project_wbs_items(*),
       project_links(*),
-      project_ai_messages(*)`)
+      project_ai_messages(*),
+      project_diagrams(type, data)`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -355,22 +369,16 @@ function render(){
     `;
   }
 
-  // --- Tabs ---
+  // --- Tabs: 3 top-level groups, each with its own row of sub-tabs ---
   html += `
-    <div class="tab-bar">
-      <button data-tab="feed" class="${activeTab === 'feed' ? 'active' : ''}">${t('project.tab_feed')}</button>
-      <button data-tab="goals" class="${activeTab === 'goals' ? 'active' : ''}">${t('project.tab_goals')}</button>
-      <button data-tab="requirements" class="${activeTab === 'requirements' ? 'active' : ''}">${t('project.tab_requirements')}</button>
-      <button data-tab="tasks" class="${activeTab === 'tasks' ? 'active' : ''}">${t('project.tab_tasks')}</button>
-      <button data-tab="polls" class="${activeTab === 'polls' ? 'active' : ''}">${t('project.tab_polls')}</button>
-      <button data-tab="events" class="${activeTab === 'events' ? 'active' : ''}">${t('project.tab_events')}</button>
-      <button data-tab="costs" class="${activeTab === 'costs' ? 'active' : ''}">${t('project.tab_costs')}</button>
-      <button data-tab="schedule" class="${activeTab === 'schedule' ? 'active' : ''}">${t('project.tab_schedule')}</button>
-      <button data-tab="wbs" class="${activeTab === 'wbs' ? 'active' : ''}">${t('project.tab_wbs')}</button>
-      <button data-tab="team" class="${activeTab === 'team' ? 'active' : ''}">${t('project.tab_team')}</button>
-      <button data-tab="links" class="${activeTab === 'links' ? 'active' : ''}">${t('project.tab_links')}</button>
-      <button data-tab="ai" class="${activeTab === 'ai' ? 'active' : ''}">${t('project.tab_ai')}</button>
+    <div class="tab-group-bar">
+      <button data-group="general" class="${activeGroup === 'general' ? 'active' : ''}">${t('project.group_general')}</button>
+      <button data-group="pm" class="${activeGroup === 'pm' ? 'active' : ''}">${t('project.group_pm')}</button>
+      <button data-group="se" class="${activeGroup === 'se' ? 'active' : ''}">${t('project.group_se')}</button>
       <a href="chat.html?id=${projectId}">${t('project.tab_chat')}</a>
+    </div>
+    <div class="tab-bar">
+      ${TAB_GROUPS[activeGroup].map(tabId => `<button data-tab="${tabId}" class="${activeTab === tabId ? 'active' : ''}">${t('project.tab_' + tabId)}</button>`).join('')}
     </div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
     <div class="tab-panel" data-panel="goals" ${activeTab !== 'goals' ? 'hidden' : ''}>${renderGoalsPanel(isOwner)}</div>
@@ -384,6 +392,8 @@ function render(){
     <div class="tab-panel" data-panel="team" ${activeTab !== 'team' ? 'hidden' : ''}>${renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab)}</div>
     <div class="tab-panel" data-panel="links" ${activeTab !== 'links' ? 'hidden' : ''}>${renderLinksPanel()}</div>
     <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
+    <div class="tab-panel" data-panel="usecases" ${activeTab !== 'usecases' ? 'hidden' : ''}>${renderDiagramPanel('usecases')}</div>
+    <div class="tab-panel" data-panel="architecture" ${activeTab !== 'architecture' ? 'hidden' : ''}>${renderDiagramPanel('architecture')}</div>
   `;
 
   content.innerHTML = html;
@@ -1145,6 +1155,295 @@ function autoGrowTextarea(el){
   el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 }
 
+// ---------------------------------------------------------------------------
+// SYSTEMS ENGINEERING DIAGRAMS: a small shared SVG editor that powers both
+// the "Use Cases" tab (actors + use-case ovals) and the "Architecture" tab
+// (SysML-style block definition diagram). One saved diagram per type per
+// project (project_diagrams table). Each type keeps its own independent
+// working state so switching tabs never loses unsaved edits, and nothing
+// is written to the database until the user clicks Save.
+// ---------------------------------------------------------------------------
+const DIAGRAM_CANVAS_W = 1200, DIAGRAM_CANVAS_H = 700;
+const DIAGRAM_SHAPE_SIZE = {
+  actor: { w: 70, h: 96 },
+  usecase: { w: 170, h: 74 },
+  block: { w: 190, h: 96 }
+};
+const DIAGRAM_PALETTES = {
+  usecases: [
+    { kind: 'actor', label: () => t('project.diagram_add_actor'), defaultLabel: () => t('project.diagram_default_actor') },
+    { kind: 'usecase', label: () => t('project.diagram_add_usecase'), defaultLabel: () => t('project.diagram_default_usecase') }
+  ],
+  architecture: [
+    { kind: 'block', label: () => t('project.diagram_add_block'), defaultLabel: () => t('project.diagram_default_block') }
+  ]
+};
+
+let diagramState = { usecases: null, architecture: null };
+let diagramDirty = { usecases: false, architecture: false };
+let diagramMode = { usecases: 'idle', architecture: 'idle' };
+let diagramConnectFrom = { usecases: null, architecture: null };
+let diagramSelected = { usecases: null, architecture: null };
+
+function diagramNodeById(type, id){
+  return diagramState[type].nodes.find(n => n.id === id);
+}
+function diagramNodeCenter(node){
+  const size = DIAGRAM_SHAPE_SIZE[node.kind];
+  return { cx: node.x + size.w / 2, cy: node.y + size.h / 2 };
+}
+// Clips a line from box A's center toward box B's center to box A's edge,
+// so arrows meet the shape boundary instead of overlapping into its middle.
+function diagramClipToBox(node, towardX, towardY){
+  const size = DIAGRAM_SHAPE_SIZE[node.kind];
+  const { cx, cy } = diagramNodeCenter(node);
+  const dx = towardX - cx, dy = towardY - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const halfW = size.w / 2, halfH = size.h / 2;
+  const scale = 1 / Math.max(Math.abs(dx) / halfW, Math.abs(dy) / halfH);
+  return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+function diagramShapeSvg(node, isSelected){
+  const size = DIAGRAM_SHAPE_SIZE[node.kind];
+  const cls = 'diagram-shape' + (isSelected ? ' selected' : '');
+  if (node.kind === 'actor'){
+    return `
+      <circle class="${cls}" cx="${size.w/2}" cy="16" r="12"></circle>
+      <line class="${cls}" x1="${size.w/2}" y1="28" x2="${size.w/2}" y2="60"></line>
+      <line class="${cls}" x1="14" y1="38" x2="${size.w-14}" y2="38"></line>
+      <line class="${cls}" x1="${size.w/2}" y1="60" x2="14" y2="88"></line>
+      <line class="${cls}" x1="${size.w/2}" y1="60" x2="${size.w-14}" y2="88"></line>
+      <text class="diagram-label" x="${size.w/2}" y="${size.h-2}" text-anchor="middle">${escapeHTML(node.label)}</text>
+    `;
+  }
+  if (node.kind === 'usecase'){
+    return `
+      <ellipse class="${cls}" cx="${size.w/2}" cy="${size.h/2}" rx="${size.w/2-2}" ry="${size.h/2-2}"></ellipse>
+      <text class="diagram-label" x="${size.w/2}" y="${size.h/2+5}" text-anchor="middle">${escapeHTML(node.label)}</text>
+    `;
+  }
+  // block (SysML BDD)
+  return `
+    <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="4"></rect>
+    <text class="diagram-block-stereotype" x="${size.w/2}" y="18" text-anchor="middle">«block»</text>
+    <text class="diagram-label" x="${size.w/2}" y="38" text-anchor="middle">${escapeHTML(node.label)}</text>
+    <line class="diagram-block-divider" x1="1" y1="48" x2="${size.w-1}" y2="48"></line>
+    <text class="diagram-block-desc" x="8" y="66">${escapeHTML(node.sublabel || '')}</text>
+  `;
+}
+
+function buildDiagramSvgHTML(type){
+  const state = diagramState[type];
+  const selected = diagramSelected[type];
+  let edgesHtml = '';
+  state.edges.forEach(edge => {
+    const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
+    if (!from || !to) return;
+    const toCenter = diagramNodeCenter(to), fromCenter = diagramNodeCenter(from);
+    const p1 = diagramClipToBox(from, toCenter.cx, toCenter.cy);
+    const p2 = diagramClipToBox(to, fromCenter.cx, fromCenter.cy);
+    const isSel = selected && selected.kind === 'edge' && selected.id === edge.id;
+    edgesHtml += `<line class="diagram-edge${isSel ? ' selected' : ''} diagram-edge-${edge.kind}" data-edge-id="${edge.id}"
+      x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" marker-end="url(#diagramArrow)"></line>`;
+  });
+  let nodesHtml = '';
+  state.nodes.forEach(node => {
+    const isSel = selected && selected.kind === 'node' && selected.id === node.id;
+    nodesHtml += `<g class="diagram-node" data-node-id="${node.id}" transform="translate(${node.x},${node.y})">${diagramShapeSvg(node, isSel)}</g>`;
+  });
+  return `
+    <svg id="diagramSvg-${type}" class="diagram-svg" width="${DIAGRAM_CANVAS_W}" height="${DIAGRAM_CANVAS_H}" data-diagram-type="${type}">
+      <defs>
+        <marker id="diagramArrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L7,3 L0,6 Z" fill="#8a97a3"></path>
+        </marker>
+      </defs>
+      <g class="diagram-edges">${edgesHtml}</g>
+      <g class="diagram-nodes">${nodesHtml}</g>
+    </svg>
+  `;
+}
+
+function renderDiagramPanel(type){
+  if (!diagramState[type]){
+    const saved = (project.project_diagrams || []).find(d => d.type === type);
+    diagramState[type] = saved && saved.data ? JSON.parse(JSON.stringify(saved.data)) : { nodes: [], edges: [] };
+    diagramDirty[type] = false;
+  }
+  const palette = DIAGRAM_PALETTES[type];
+  return `
+    <div class="diagram-toolbar">
+      ${palette.map(p => `<button class="btn btn-ghost btn-small" data-diagram-add="${p.kind}" data-diagram-type="${type}" type="button">+ ${p.label()}</button>`).join('')}
+      <button class="btn btn-ghost btn-small" data-diagram-connect data-diagram-type="${type}" type="button">🔗 ${t('project.diagram_connect')}</button>
+      <button class="btn btn-ghost btn-small" data-diagram-delete data-diagram-type="${type}" type="button">${t('project.diagram_delete_selected')}</button>
+      <span class="spacer"></span>
+      <span class="credits-note" id="diagramDirtyNote-${type}">${diagramDirty[type] ? t('project.diagram_unsaved') : ''}</span>
+      <button class="btn btn-primary btn-small" data-diagram-save data-diagram-type="${type}" type="button">${t('common.save')}</button>
+    </div>
+    <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')}</p>
+    <div class="diagram-canvas-wrap">${buildDiagramSvgHTML(type)}</div>
+  `;
+}
+
+function refreshDiagramCanvas(type){
+  const wrap = document.querySelector(`.tab-panel[data-panel="${type}"] .diagram-canvas-wrap`);
+  if (!wrap) return;
+  wrap.innerHTML = buildDiagramSvgHTML(type);
+  wireDiagramCanvasInteractions(type);
+}
+
+function updateDiagramDirtyNote(type){
+  const note = document.getElementById('diagramDirtyNote-' + type);
+  if (note) note.textContent = diagramDirty[type] ? t('project.diagram_unsaved') : '';
+}
+
+function wireDiagramCanvasInteractions(type){
+  const svg = document.getElementById('diagramSvg-' + type);
+  if (!svg) return;
+  const state = diagramState[type];
+
+  function markDirty(){ diagramDirty[type] = true; updateDiagramDirtyNote(type); }
+
+  function toSvgPoint(evt){
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function moveConnectedEdges(nodeId){
+    const node = diagramNodeById(type, nodeId);
+    state.edges.forEach(edge => {
+      if (edge.from !== nodeId && edge.to !== nodeId) return;
+      const line = svg.querySelector(`.diagram-edge[data-edge-id="${edge.id}"]`);
+      if (!line) return;
+      const other = diagramNodeById(type, edge.from === nodeId ? edge.to : edge.from);
+      if (!other) return;
+      const otherCenter = diagramNodeCenter(other), thisCenter = diagramNodeCenter(node);
+      const pThis = diagramClipToBox(node, otherCenter.cx, otherCenter.cy);
+      const pOther = diagramClipToBox(other, thisCenter.cx, thisCenter.cy);
+      if (edge.from === nodeId){ line.setAttribute('x1', pThis.x); line.setAttribute('y1', pThis.y); line.setAttribute('x2', pOther.x); line.setAttribute('y2', pOther.y); }
+      else { line.setAttribute('x2', pThis.x); line.setAttribute('y2', pThis.y); line.setAttribute('x1', pOther.x); line.setAttribute('y1', pOther.y); }
+    });
+  }
+
+  let dragging = null;
+  svg.querySelectorAll('.diagram-node').forEach(g => {
+    const nodeId = g.dataset.nodeId;
+    g.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      if (diagramMode[type] === 'connecting'){
+        if (diagramConnectFrom[type] && diagramConnectFrom[type] !== nodeId){
+          state.edges.push({ id: 'e' + Math.random().toString(36).slice(2,9), from: diagramConnectFrom[type], to: nodeId, kind: 'association' });
+          markDirty();
+        }
+        diagramMode[type] = 'idle';
+        diagramConnectFrom[type] = null;
+        refreshDiagramCanvas(type);
+        return;
+      }
+      diagramSelected[type] = { kind: 'node', id: nodeId };
+      const p = toSvgPoint(e);
+      const node = diagramNodeById(type, nodeId);
+      dragging = { nodeId, dx: p.x - node.x, dy: p.y - node.y };
+      refreshDiagramCanvas(type);
+    });
+    g.addEventListener('dblclick', () => {
+      const node = diagramNodeById(type, nodeId);
+      const next = prompt(t('project.diagram_rename_prompt'), node.label);
+      if (next !== null && next.trim()){
+        node.label = next.trim();
+        markDirty();
+        refreshDiagramCanvas(type);
+      }
+      if (node.kind === 'block' && next !== null){
+        const desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
+        if (desc !== null){ node.sublabel = desc.trim(); markDirty(); refreshDiagramCanvas(type); }
+      }
+    });
+  });
+
+  svg.querySelectorAll('.diagram-edge').forEach(line => {
+    line.addEventListener('click', () => {
+      diagramSelected[type] = { kind: 'edge', id: line.dataset.edgeId };
+      refreshDiagramCanvas(type);
+    });
+  });
+
+  svg.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const p = toSvgPoint(e);
+    const node = diagramNodeById(type, dragging.nodeId);
+    node.x = Math.max(0, Math.min(DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[node.kind].w, p.x - dragging.dx));
+    node.y = Math.max(0, Math.min(DIAGRAM_CANVAS_H - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - dragging.dy));
+    markDirty();
+    const g = svg.querySelector(`.diagram-node[data-node-id="${dragging.nodeId}"]`);
+    if (g) g.setAttribute('transform', `translate(${node.x},${node.y})`);
+    moveConnectedEdges(dragging.nodeId);
+  });
+  window.addEventListener('mouseup', () => { dragging = null; });
+
+  svg.addEventListener('mousedown', (e) => {
+    if (e.target === svg) { diagramSelected[type] = null; refreshDiagramCanvas(type); }
+  });
+}
+
+function wireDiagramToolbars(){
+  content.querySelectorAll('[data-diagram-add]').forEach(btn => btn.addEventListener('click', () => {
+    const type = btn.dataset.diagramType, kind = btn.dataset.diagramAdd;
+    const state = diagramState[type];
+    const palette = DIAGRAM_PALETTES[type].find(p => p.kind === kind);
+    const count = state.nodes.length;
+    state.nodes.push({
+      id: 'n' + Math.random().toString(36).slice(2,9), kind,
+      x: 30 + (count % 5) * 200, y: 30 + Math.floor(count / 5) * 150,
+      label: palette.defaultLabel()
+    });
+    diagramDirty[type] = true;
+    updateDiagramDirtyNote(type);
+    refreshDiagramCanvas(type);
+  }));
+
+  content.querySelectorAll('[data-diagram-connect]').forEach(btn => btn.addEventListener('click', () => {
+    const type = btn.dataset.diagramType;
+    if (!diagramSelected[type] || diagramSelected[type].kind !== 'node'){
+      alert(t('project.diagram_connect_hint'));
+      return;
+    }
+    diagramMode[type] = 'connecting';
+    diagramConnectFrom[type] = diagramSelected[type].id;
+  }));
+
+  content.querySelectorAll('[data-diagram-delete]').forEach(btn => btn.addEventListener('click', () => {
+    const type = btn.dataset.diagramType;
+    const sel = diagramSelected[type];
+    if (!sel) return;
+    const state = diagramState[type];
+    if (sel.kind === 'node'){
+      state.nodes = state.nodes.filter(n => n.id !== sel.id);
+      state.edges = state.edges.filter(e => e.from !== sel.id && e.to !== sel.id);
+    } else {
+      state.edges = state.edges.filter(e => e.id !== sel.id);
+    }
+    diagramSelected[type] = null;
+    diagramDirty[type] = true;
+    updateDiagramDirtyNote(type);
+    refreshDiagramCanvas(type);
+  }));
+
+  content.querySelectorAll('[data-diagram-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const type = btn.dataset.diagramType;
+    btn.disabled = true;
+    const { error } = await supabaseClient.from('project_diagrams').upsert({
+      project_id: projectId, type, data: diagramState[type], updated_by: currentUser.id
+    }, { onConflict: 'project_id,type' });
+    btn.disabled = false;
+    if (error){ alert(error.message); return; }
+    diagramDirty[type] = false;
+    updateDiagramDirtyNote(type);
+  }));
+}
+
 async function recalcAndSaveSchedule(){
   const [{ data: activities }, { data: links }] = await Promise.all([
     supabaseClient.from('project_activities').select('*').eq('project_id', projectId),
@@ -1344,8 +1643,19 @@ function setTeamMsg(text, isError){
 }
 
 function wireEvents(){
+  content.querySelectorAll('.tab-group-bar button').forEach(btn => btn.addEventListener('click', () => {
+    const group = btn.dataset.group;
+    if (group === activeGroup) return;
+    activeGroup = group;
+    activeTab = lastTabInGroup[group] || TAB_GROUPS[group][0];
+    lastTabInGroup[activeGroup] = activeTab;
+    render();
+    maybeAutoFitActiveTab();
+  }));
+
   content.querySelectorAll('.tab-bar button').forEach(btn => btn.addEventListener('click', () => {
     activeTab = btn.dataset.tab;
+    lastTabInGroup[activeGroup] = activeTab;
     content.querySelectorAll('.tab-bar button').forEach(b => b.classList.toggle('active', b === btn));
     content.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== activeTab; });
     maybeAutoFitActiveTab();
@@ -1935,6 +2245,10 @@ function wireEvents(){
     window.location.href = 'feed.html';
   });
 
+  // --- Systems Engineering diagrams ---
+  wireDiagramToolbars();
+  wireDiagramCanvasInteractions('usecases');
+  wireDiagramCanvasInteractions('architecture');
 }
 
 async function init(){

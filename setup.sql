@@ -2032,3 +2032,50 @@ alter table projects add column if not exists visibility text not null default '
 alter table projects drop constraint if exists projects_visibility_check;
 alter table projects add constraint projects_visibility_check
   check (visibility in ('public','private'));
+
+-- ---------------------------------------------------------------------------
+-- PROJECT DIAGRAMS: powers the Systems Engineering "Use Cases" and
+-- "Architecture" (SysML block definition) tabs. One saved diagram per
+-- project per type, stored as a simple {nodes:[...], edges:[...]} JSON
+-- document the client draws from — the editor always saves the whole
+-- diagram at once via upsert, so there's no per-shape row concurrency to
+-- worry about.
+-- ---------------------------------------------------------------------------
+create table if not exists project_diagrams (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  type text not null check (type in ('usecases','architecture')),
+  data jsonb not null default '{"nodes":[],"edges":[]}'::jsonb,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references profiles(id) on delete set null,
+  unique (project_id, type)
+);
+
+create or replace function public.touch_project_diagrams_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_project_diagrams_touch_updated_at on project_diagrams;
+create trigger trg_project_diagrams_touch_updated_at
+  before update on project_diagrams
+  for each row execute function public.touch_project_diagrams_updated_at();
+
+alter table project_diagrams enable row level security;
+
+drop policy if exists "Team can view diagrams" on project_diagrams;
+create policy "Team can view diagrams" on project_diagrams
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can create diagrams" on project_diagrams;
+create policy "Team can create diagrams" on project_diagrams
+  for insert with check (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update diagrams" on project_diagrams;
+create policy "Team can update diagrams" on project_diagrams
+  for update using (public.is_project_team_member(project_id));

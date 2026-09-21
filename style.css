@@ -800,7 +800,20 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 }
 
 /* ---------- Project page tabs ---------- */
-.tab-bar{display:flex;flex-wrap:wrap;gap:6px;background:var(--mist);border-radius:100px;padding:4px;margin:28px 0 24px;max-width:100%;}
+/* Top-level group bar (General / Project Management / Systems Engineering) —
+   bolder and darker than the sub-tab bar below it so the two levels read as
+   a clear hierarchy, not two rows of the same thing. */
+.tab-group-bar{display:flex;flex-wrap:wrap;gap:6px;margin:28px 0 10px;}
+.tab-group-bar button,.tab-group-bar a{
+  border:none;background:var(--mist);padding:9px 18px;border-radius:100px;cursor:pointer;
+  font-family:'Space Grotesk';font-weight:700;font-size:13.5px;color:var(--ink-soft);white-space:nowrap;
+  text-decoration:none;display:inline-block;letter-spacing:.01em;
+}
+.tab-group-bar button.active{background:var(--ink);color:#fff;}
+.tab-group-bar a{margin-left:auto;background:none;color:var(--blue-deep);}
+.tab-group-bar a:hover{text-decoration:underline;}
+
+.tab-bar{display:flex;flex-wrap:wrap;gap:6px;background:var(--mist);border-radius:100px;padding:4px;margin:0 0 24px;max-width:100%;}
 .tab-bar button,.tab-bar a{
   border:none;background:none;padding:9px 20px;border-radius:100px;cursor:pointer;
   font-family:'Space Grotesk';font-weight:600;font-size:14px;color:var(--ink-soft);white-space:nowrap;
@@ -808,6 +821,29 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 }
 .tab-bar button.active{background:var(--panel);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,0.06);}
 .tab-panel[hidden]{display:none;}
+
+/* ---------- Systems Engineering diagram editor (use cases / SysML BDD) ---------- */
+.diagram-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.diagram-toolbar .spacer{flex:1;}
+.diagram-canvas-wrap{
+  overflow:auto;border:1px solid var(--line);border-radius:var(--radius-md);
+  max-height:520px;scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+}
+.diagram-svg{
+  display:block;
+  background-image:linear-gradient(90deg, var(--mist) 1px, transparent 1px),linear-gradient(var(--mist) 1px, transparent 1px);
+  background-size:24px 24px;background-color:var(--panel);
+}
+.diagram-node{cursor:grab;}
+.diagram-node:active{cursor:grabbing;}
+.diagram-shape{fill:var(--panel);stroke:var(--blue);stroke-width:1.5;}
+.diagram-shape.selected{stroke:var(--orange-deep);stroke-width:2.5;}
+.diagram-label{font-family:'Space Grotesk',sans-serif;font-size:12.5px;font-weight:600;fill:var(--ink);pointer-events:none;}
+.diagram-block-stereotype{font-family:'IBM Plex Mono',monospace;font-size:9.5px;fill:var(--ink-soft);pointer-events:none;}
+.diagram-block-divider{stroke:var(--line);stroke-width:1;}
+.diagram-block-desc{font-family:'Inter',sans-serif;font-size:10px;fill:var(--ink-soft);pointer-events:none;}
+.diagram-edge{stroke:#8a97a3;stroke-width:1.5;cursor:pointer;}
+.diagram-edge.selected{stroke:var(--orange-deep);stroke-width:2.5;}
 
 /* ---------- Team feed (project.html) ---------- */
 .team-post{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px;}
@@ -986,7 +1022,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 summary:focus-visible,[tabindex]:focus-visible{
   outline:2px solid var(--blue);outline-offset:2px;border-radius:6px;
 }
-.btn:focus-visible,.tab-bar a:focus-visible,.tab-bar button:focus-visible,.chip:focus-visible,
+.btn:focus-visible,.tab-bar a:focus-visible,.tab-bar button:focus-visible,
+.tab-group-bar a:focus-visible,.tab-group-bar button:focus-visible,.chip:focus-visible,
 .support-btn:focus-visible,.collab-btn:focus-visible,.rsvp-btn:focus-visible,.lang-switcher:focus-visible{
   outline-offset:2px;border-radius:100px;
 }
@@ -996,8 +1033,9 @@ summary:focus-visible,[tabindex]:focus-visible{
 .support-btn:active:not(:disabled),.collab-btn:active:not(:disabled),.rsvp-btn:active,.icon-btn:active{transform:scale(0.95);}
 .support-btn,.collab-btn,.rsvp-btn{transition:transform .12s ease, border-color .18s ease, color .18s ease, background .18s ease;}
 .icon-btn{transition:transform .12s ease, color .18s ease;}
-.tab-bar button,.tab-bar a{transition:background .18s ease, color .18s ease, box-shadow .18s ease;}
+.tab-bar button,.tab-bar a,.tab-group-bar button,.tab-group-bar a{transition:background .18s ease, color .18s ease, box-shadow .18s ease;}
 .tab-bar button:not(.active):hover,.tab-bar a:hover{color:var(--ink);}
+.tab-group-bar button:not(.active):hover{background:var(--line);}
 
 /* ---------- Card hover affordance: cards that hold a link/action inside
    get a soft lift so the whole surface reads as interactive, not just the
