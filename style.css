@@ -378,13 +378,44 @@
 }
 .share-link-box code{font-family:'IBM Plex Mono',monospace;font-size:12.5px;word-break:break-all;flex:1;}
 
-/* ---------- Home page: "happening now" centralized card ---------- */
-.news-panel{
-  max-width:960px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
-  border-radius:var(--radius-lg);padding:40px 32px;box-shadow:var(--shadow);
-}
-.news-row{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;}
+/* ---------- Simplified home page ---------- */
 .news-empty{text-align:center;color:var(--ink-soft);font-size:14.5px;padding:20px 0;}
+
+.home-hero{text-align:center;padding:64px 20px 56px;position:relative;}
+.home-hero .lang-slot-wrap{position:absolute;top:8px;right:20px;}
+.home-hero img.home-logo{height:84px;width:auto;margin:0 auto 20px;mix-blend-mode:multiply;}
+.home-tagline{font-family:'Space Grotesk',sans-serif;font-size:19px;color:var(--ink-soft);margin-bottom:28px;}
+.home-hero-ctas{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;}
+
+.home-more{padding:20px 20px 72px;}
+
+/* One-project-at-a-time spotlight carousel ("happening now") */
+.spotlight-wrap{position:relative;max-width:560px;margin:0 auto;}
+.spotlight-scroll{
+  display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;
+  border-radius:var(--radius-lg);
+}
+.spotlight-scroll::-webkit-scrollbar{display:none;}
+.spotlight-card{
+  flex:0 0 100%;scroll-snap-align:center;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);
+}
+.spotlight-card img{width:100%;aspect-ratio:16/9;object-fit:cover;}
+.spotlight-card-body{padding:26px 24px;text-align:center;}
+.spotlight-card-body h3{font-size:21px;margin-bottom:8px;}
+.spotlight-card-body p{color:var(--ink-soft);font-size:14.5px;margin-bottom:4px;}
+.spotlight-card-body .owner{display:block;font-size:11.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;margin-top:10px;}
+.spotlight-arrow{
+  position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;
+  border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);cursor:pointer;font-size:16px;
+  box-shadow:var(--shadow);z-index:5;
+}
+.spotlight-arrow.prev{left:-8px;}
+.spotlight-arrow.next{right:-8px;}
+@media(max-width:680px){.spotlight-arrow{display:none;}}
+.spotlight-dots{display:flex;justify-content:center;gap:6px;margin-top:16px;}
+.spotlight-dot{width:7px;height:7px;border-radius:50%;background:var(--line);border:none;cursor:pointer;padding:0;}
+.spotlight-dot.active{background:var(--blue);}
 
 /* ---------- Skills: form checkboxes + feed-card chips ---------- */
 .skills-check-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px;font-weight:400;}
