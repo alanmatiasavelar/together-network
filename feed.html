@@ -77,6 +77,30 @@
                 <option value="profit" data-i18n="feed.type.profit">For-profit / investable</option>
               </select>
             </label>
+            <label><span data-i18n="feed.skills_label">Skills needed</span>
+              <span class="skills-check-grid">
+                <label class="skill-check"><input type="checkbox" name="skills" value="design"> <span data-i18n="feed.skill.design">Design</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="frontend"> <span data-i18n="feed.skill.frontend">Frontend dev</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="backend"> <span data-i18n="feed.skill.backend">Backend dev</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="mobile"> <span data-i18n="feed.skill.mobile">Mobile dev</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="data"> <span data-i18n="feed.skill.data">Data & analytics</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="writing"> <span data-i18n="feed.skill.writing">Writing & content</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="marketing"> <span data-i18n="feed.skill.marketing">Marketing</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="video"> <span data-i18n="feed.skill.video">Video & media</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="legal"> <span data-i18n="feed.skill.legal">Legal</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="finance"> <span data-i18n="feed.skill.finance">Finance & accounting</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="project_management"> <span data-i18n="feed.skill.project_management">Project management</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="sales"> <span data-i18n="feed.skill.sales">Sales & BD</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="research"> <span data-i18n="feed.skill.research">Research</span></label>
+                <label class="skill-check"><input type="checkbox" name="skills" value="other"> <span data-i18n="feed.skill.other">Other</span></label>
+              </span>
+            </label>
+            <label><span data-i18n="project.visibility_label">Visibility</span>
+              <select name="visibility">
+                <option value="public" data-i18n="project.visibility_public">🌍 Public — listed on the feed</option>
+                <option value="private" data-i18n="project.visibility_private">🔒 Private — unlisted, link only</option>
+              </select>
+            </label>
             <label><span data-i18n="feed.funding_label">Funding goal in USD (optional)</span><input type="number" name="funding_target" min="0" step="1"></label>
             <label><span data-i18n="feed.whatsapp_label">WhatsApp group link (optional)</span><input type="url" name="whatsapp_link" placeholder="https://chat.whatsapp.com/..."></label>
             <label><span data-i18n="feed.drive_label">Google Drive folder link (optional)</span><input type="url" name="drive_link" placeholder="https://drive.google.com/drive/folders/..."></label>
@@ -107,6 +131,23 @@
           <option value="all" data-i18n="feed.filter.all_types">All types</option>
           <option value="nonprofit" data-i18n="feed.type.nonprofit">Non-profit</option>
           <option value="profit" data-i18n="feed.type.profit">For-profit</option>
+        </select>
+        <select id="filterSkill">
+          <option value="all" data-i18n="feed.filter.all_skills">All skills</option>
+          <option value="design" data-i18n="feed.skill.design">Design</option>
+          <option value="frontend" data-i18n="feed.skill.frontend">Frontend dev</option>
+          <option value="backend" data-i18n="feed.skill.backend">Backend dev</option>
+          <option value="mobile" data-i18n="feed.skill.mobile">Mobile dev</option>
+          <option value="data" data-i18n="feed.skill.data">Data & analytics</option>
+          <option value="writing" data-i18n="feed.skill.writing">Writing & content</option>
+          <option value="marketing" data-i18n="feed.skill.marketing">Marketing</option>
+          <option value="video" data-i18n="feed.skill.video">Video & media</option>
+          <option value="legal" data-i18n="feed.skill.legal">Legal</option>
+          <option value="finance" data-i18n="feed.skill.finance">Finance & accounting</option>
+          <option value="project_management" data-i18n="feed.skill.project_management">Project management</option>
+          <option value="sales" data-i18n="feed.skill.sales">Sales & BD</option>
+          <option value="research" data-i18n="feed.skill.research">Research</option>
+          <option value="other" data-i18n="feed.skill.other">Other</option>
         </select>
       </div>
 
@@ -248,6 +289,7 @@ function cardHTML(p, opts){
       </div>
       <h3>${escapeHTML(p.title)}</h3>
       <p class="pitch">${escapeHTML(p.pitch)}</p>
+      ${!opts.example && (p.skills || []).length > 0 ? `<div class="card-row">${p.skills.map(s => `<span class="chip skill-chip">${t('feed.skill.' + s)}</span>`).join('')}</div>` : ''}
       <div class="card-row">${collabBlock}</div>
       ${creditsBlock}
       <div class="feed-card-bottom">
@@ -272,6 +314,7 @@ async function loadFeed(){
   const { data: projects, error } = await supabaseClient
     .from('projects')
     .select('*, project_supporters(user_id, amount, confirmed), project_collaborators(status)')
+    .eq('visibility', 'public')
     .order('created_at', { ascending: false });
 
   if (error){
@@ -298,12 +341,14 @@ function renderFilteredFeed(resetLimit = true){
   if (resetLimit) feedRenderLimit = FEED_PAGE_SIZE;
   const category = document.getElementById('filterCategory')?.value || 'all';
   const type = document.getElementById('filterType')?.value || 'all';
+  const skill = document.getElementById('filterSkill')?.value || 'all';
   const sort = document.getElementById('sortBy')?.value || 'newest';
   const query = (document.getElementById('searchQuery')?.value || '').trim().toLowerCase();
 
   let filtered = allProjects;
   if (category !== 'all') filtered = filtered.filter(p => p.category === category);
   if (type !== 'all') filtered = filtered.filter(p => p.goal_type === type);
+  if (skill !== 'all') filtered = filtered.filter(p => (p.skills || []).includes(skill));
   if (query){
     filtered = filtered.filter(p =>
       (p.title || '').toLowerCase().includes(query) ||
@@ -391,6 +436,7 @@ async function loadArchive(){
     .from('projects')
     .select('id, title, pitch, image_url, owner_name')
     .eq('stage', 'finish')
+    .eq('visibility', 'public')
     .order('created_at', { ascending: false })
     .limit(12);
   if (error || !data || data.length === 0){ section.innerHTML = ''; return; }
@@ -438,6 +484,8 @@ document.getElementById('projectForm').addEventListener('submit', async (e) => {
     description: fd.get('description') || null,
     category: fd.get('category'),
     goal_type: fd.get('goal_type'),
+    skills: fd.getAll('skills'),
+    visibility: fd.get('visibility') || 'public',
     funding_target: fd.get('funding_target') ? Number(fd.get('funding_target')) : null,
     whatsapp_link: waInput || null,
     drive_link: driveInput || null
@@ -474,6 +522,7 @@ async function init(){
 
   document.getElementById('filterCategory').addEventListener('change', renderFilteredFeed);
   document.getElementById('filterType').addEventListener('change', renderFilteredFeed);
+  document.getElementById('filterSkill').addEventListener('change', renderFilteredFeed);
   document.getElementById('sortBy').addEventListener('change', renderFilteredFeed);
   let searchDebounce;
   document.getElementById('searchQuery').addEventListener('input', () => {

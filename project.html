@@ -72,6 +72,7 @@ const VALID_TABS = ['feed', 'goals', 'requirements', 'tasks', 'polls', 'events',
 const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
 
 let currentUser = null;
+let myCvUrl = null;
 let project = null;
 let activeTab = VALID_TABS.includes(params.get('tab')) ? params.get('tab') : 'feed';
 let editingGoalId = null;
@@ -208,7 +209,7 @@ async function loadProject(){
     .select(`*,
       project_goals(*),
       project_requirements(*),
-      project_collaborators(id, user_id, status, profiles(display_name, social_platform, social_url)),
+      project_collaborators(id, user_id, status, cv_url, profiles(display_name, social_platform, social_url)),
       project_supporters(user_id, amount),
       project_tasks(*, task_assignees(user_id, profiles(display_name))),
       project_polls(*, poll_votes(user_id, option_index)),
@@ -227,6 +228,12 @@ async function loadProject(){
   }
   project = data;
   await loadFeedPosts();
+  if (currentUser){
+    const { data: profileRow } = await supabaseClient.from('profiles').select('cv_url').eq('id', currentUser.id).single();
+    myCvUrl = profileRow?.cv_url || null;
+  } else {
+    myCvUrl = null;
+  }
   render();
   maybeAutoFitActiveTab();
 }
@@ -274,7 +281,7 @@ function render(){
         <h3>🔔 ${pendingRequests.length} ${pendingRequests.length === 1 ? t('project.notif_one') : t('project.notif_other')}</h3>
         ${pendingRequests.map(r => `
           <div class="notify-row">
-            <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}</span>
+            <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}${r.cv_url ? ` · <a href="${escapeHTML(r.cv_url)}" target="_blank" rel="noopener noreferrer">${t('project.applicant_cv')}</a>` : ''}</span>
             <div class="notify-actions">
               <button class="btn btn-ghost btn-small" data-approve="${r.id}">${t('project.approve')}</button>
               <button class="btn btn-ghost btn-small" data-deny="${r.id}">${t('project.deny')}</button>
@@ -294,6 +301,7 @@ function render(){
       <h1>${escapeHTML(project.title)}</h1>
       <p class="project-desc">${escapeHTML(project.description || project.pitch)}</p>
       <p style="margin-top:10px;font-size:13.5px;color:var(--ink-soft);">${t('project.manager')} ${escapeHTML(project.owner_name)}</p>
+      ${(project.skills || []).length > 0 ? `<div class="card-row" style="margin-top:10px;">${project.skills.map(s => `<span class="chip skill-chip">${t('feed.skill.' + s)}</span>`).join('')}</div>` : ''}
       <div class="project-meta">
         <span class="stage-badge stage-${project.stage}">${t('project.stage_' + project.stage)}</span>
         ${isOwner ? `
@@ -301,6 +309,7 @@ function render(){
             ${['create','recruit','work','track','finish'].map(s => `<option value="${s}" ${project.stage === s ? 'selected' : ''}>${t('project.stage_' + s)}</option>`).join('')}
           </select>
         ` : ''}
+        ${project.visibility === 'private' ? `<span class="chip">${t('project.visibility_private')}</span>` : ''}
         ${isSiteAdminViewer ? `<button class="icon-btn" id="adminDeleteProjectBtn" style="margin-left:auto;">🗑 ${t('project.admin_delete_project')}</button>` : ''}
       </div>
     </div>
@@ -327,6 +336,18 @@ function render(){
             ` : ''}
           </label>
           <label>${t('project.youtube_link')}<input type="url" name="youtube_link" value="${escapeHTML(project.youtube_link || '')}" placeholder="https://youtube.com/watch?v=..."></label>
+          <label>${t('feed.skills_label')}
+            <span class="skills-check-grid">
+              ${SKILL_OPTIONS.map(s => `<label class="skill-check"><input type="checkbox" name="skills" value="${s}" ${(project.skills || []).includes(s) ? 'checked' : ''}> ${t('feed.skill.' + s)}</label>`).join('')}
+            </span>
+          </label>
+          <label>${t('project.visibility_label')}
+            <select name="visibility">
+              <option value="public" ${project.visibility !== 'private' ? 'selected' : ''}>${t('project.visibility_public')}</option>
+              <option value="private" ${project.visibility === 'private' ? 'selected' : ''}>${t('project.visibility_private')}</option>
+            </select>
+          </label>
+          <p class="credits-note">${t('project.visibility_note')}</p>
           <button class="btn btn-ghost btn-small" type="submit">${t('common.save')}</button>
           <p class="form-msg" id="mediaMsg"></p>
         </form>
@@ -384,6 +405,7 @@ function renderLocked(myCollab){
     `;
   } else if (!myCollab){
     html += `<button class="btn btn-primary btn-small" id="requestJoinBtn">${t('project.request_to_join')}</button>`;
+    html += `<p class="credits-note" style="margin-top:8px;">${myCvUrl ? t('project.cv_included_note') : `<a href="dashboard.html">${t('project.cv_missing_note')}</a>`}</p>`;
   } else if (myCollab.status === 'pending'){
     html += `<p style="color:var(--ink-soft);font-size:14px;">${t('project.pending_approval')}</p>`;
   } else if (myCollab.status === 'denied'){
@@ -982,7 +1004,7 @@ function renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab){
     pendingRequests.forEach(r => {
       html += `
         <div class="notify-row">
-          <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}</span>
+          <span class="req-name">${escapeHTML(r.profiles?.display_name || 'Someone')}${r.cv_url ? ` · <a href="${escapeHTML(r.cv_url)}" target="_blank" rel="noopener noreferrer">${t('project.applicant_cv')}</a>` : ''}</span>
           <div class="notify-actions">
             <button class="btn btn-ghost btn-small" data-approve="${r.id}">${t('project.approve')}</button>
             <button class="btn btn-ghost btn-small" data-deny="${r.id}">${t('project.deny')}</button>
@@ -1022,6 +1044,7 @@ function renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab){
     // admin viewing a project they're not part of — no self-service join/leave state to show
   } else if (!myCollab){
     html += `<button class="btn btn-primary btn-small" id="requestJoinBtn">${t('project.request_to_join')}</button>`;
+    html += `<p class="credits-note" style="margin-top:8px;">${myCvUrl ? t('project.cv_included_note') : `<a href="dashboard.html">${t('project.cv_missing_note')}</a>`}</p>`;
   } else if (myCollab.status === 'pending'){
     html += `<p style="font-size:14px;color:var(--ink-soft);">${t('project.pending_approval')}</p>`;
   } else if (myCollab.status === 'approved'){
@@ -1331,7 +1354,7 @@ function wireEvents(){
   const requestBtn = document.getElementById('requestJoinBtn');
   if (requestBtn) requestBtn.addEventListener('click', async () => {
     requestBtn.disabled = true;
-    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending', cv_url: myCvUrl });
     if (error){ setTeamMsg(error.message, true); requestBtn.disabled = false; return; }
     loadProject();
   });
@@ -1345,7 +1368,7 @@ function wireEvents(){
   const reRequestBtn = document.getElementById('reRequestBtn');
   if (reRequestBtn) reRequestBtn.addEventListener('click', async () => {
     await supabaseClient.from('project_collaborators').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
-    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending', cv_url: myCvUrl });
     if (error){ setTeamMsg(error.message, true); return; }
     loadProject();
   });
@@ -1396,7 +1419,10 @@ function wireEvents(){
       }
     }
 
-    const { error } = await supabaseClient.from('projects').update({ image_url: imageUrl, youtube_link: ytLink || null }).eq('id', projectId);
+    const { error } = await supabaseClient.from('projects').update({
+      image_url: imageUrl, youtube_link: ytLink || null,
+      skills: fd.getAll('skills'), visibility: fd.get('visibility') || 'public'
+    }).eq('id', projectId);
     submitBtn.disabled = false;
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
     loadProject();

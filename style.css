@@ -385,6 +385,12 @@
 }
 .news-row{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;}
 .news-empty{text-align:center;color:var(--ink-soft);font-size:14.5px;padding:20px 0;}
+
+/* ---------- Skills: form checkboxes + feed-card chips ---------- */
+.skills-check-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:6px;font-weight:400;}
+.skill-check{display:flex;align-items:center;gap:5px;font-size:13.5px;width:auto;}
+.skill-check input{width:auto;}
+.chip.skill-chip{background:#F3EEFB;border-color:#DDCFF2;color:#5B3FA0;}
 .auth-switch{margin-top:22px;text-align:center;font-size:14px;color:var(--ink-soft);}
 .auth-switch a{color:var(--blue-deep);font-weight:600;}
 .auth-back{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-soft);margin-bottom:22px;}

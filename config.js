@@ -34,6 +34,7 @@ function initials(name){
   return (name || '?').trim().split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase();
 }
 const catLabel = { community:'Community', tech:'Tech', 'social-impact':'Social impact', business:'Business', creative:'Creative', other:'Other' };
+const SKILL_OPTIONS = ['design','frontend','backend','mobile','data','writing','marketing','video','legal','finance','project_management','sales','research','other'];
 const WHATSAPP_LINK_PATTERN = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+$/;
 const DRIVE_LINK_PATTERN = /^https:\/\/(www\.)?drive\.google\.com\/drive\/(u\/\d+\/)?folders\/[A-Za-z0-9_-]+(\?.*)?$/;
 

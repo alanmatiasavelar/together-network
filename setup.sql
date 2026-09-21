@@ -2002,3 +2002,33 @@ create policy "Users can replace their own CV" on storage.objects
 drop policy if exists "Users can delete their own CV" on storage.objects;
 create policy "Users can delete their own CV" on storage.objects
   for delete using (bucket_id = 'user-cvs' and owner = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- SKILLS: a fixed-vocabulary tag list a manager attaches to their project
+-- (mirrors category/goal_type) so contributors can filter the public feed by
+-- skill and see at a glance what a project needs.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists skills text[] not null default '{}';
+create index if not exists idx_projects_skills on projects using gin(skills);
+
+-- ---------------------------------------------------------------------------
+-- CV ON APPLY: whatever CV link is on the applicant's profile (see the
+-- user-cvs dashboard feature above) is captured on their join request, so
+-- the project owner can see it when reviewing. No RLS change needed — the
+-- existing "Users can request to join" / "View collaborators" policies
+-- already cover arbitrary columns on the requester's own row.
+-- ---------------------------------------------------------------------------
+alter table project_collaborators add column if not exists cv_url text;
+
+-- ---------------------------------------------------------------------------
+-- VISIBILITY: "unlisted" style, like YouTube — a private project is simply
+-- left out of public listings (feed, home page, archive). It stays fully
+-- reachable by anyone who has the direct link, exactly like today, which is
+-- why this does NOT touch RLS ("Public can read projects" already allows
+-- reading any single project by id) — only the feed-style queries filter on
+-- this column.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists visibility text not null default 'public';
+alter table projects drop constraint if exists projects_visibility_check;
+alter table projects add constraint projects_visibility_check
+  check (visibility in ('public','private'));

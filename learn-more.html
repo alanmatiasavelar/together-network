@@ -74,6 +74,7 @@ const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
 let currentUser = null;
+let myCvUrl = null;
 let project = null;
 let editingPostId = null;
 
@@ -143,6 +144,12 @@ async function loadProject(){
     return;
   }
   project = data;
+  if (currentUser){
+    const { data: profileRow } = await supabaseClient.from('profiles').select('cv_url').eq('id', currentUser.id).single();
+    myCvUrl = profileRow?.cv_url || null;
+  } else {
+    myCvUrl = null;
+  }
   render();
 }
 
@@ -251,6 +258,7 @@ function renderActionRow(isOwner, myCollab){
     <button class="btn btn-ghost btn-small" id="shareProjectBtn" type="button">🔗 ${t('learnmore.more')}</button>
   `;
 
+  let showCvNote = false;
   if (isFinished){
     const ownerEmail = project.owner?.email || '';
     html += `<a class="btn btn-ghost btn-small" href="mailto:${escapeHTML(ownerEmail)}?subject=${encodeURIComponent(project.title)}">✉️ ${t('learnmore.contact_manager')}</a>`;
@@ -264,15 +272,21 @@ function renderActionRow(isOwner, myCollab){
       // owner doesn't request to join their own project
     } else if (!myCollab){
       html += `<button class="btn btn-ghost btn-small" id="participateBtn" type="button">🤝 ${t('project.request_to_join')}</button>`;
+      showCvNote = true;
     } else if (myCollab.status === 'pending'){
       html += `<span class="chip">${t('project.pending_approval')}</span>`;
     } else if (myCollab.status === 'approved'){
       html += `<span class="chip">${t('project.youre_collaborator')}</span>`;
     } else if (myCollab.status === 'denied'){
       html += `<button class="btn btn-ghost btn-small" id="reRequestBtn2" type="button">${t('project.request_again')}</button>`;
+      showCvNote = true;
     }
   }
-  html += `</div><p class="form-msg" id="shareMsg" style="text-align:center;"></p><p class="form-msg" id="actionMsg" style="text-align:center;"></p>`;
+  html += `</div>`;
+  if (showCvNote){
+    html += `<p class="credits-note" style="text-align:center;">${myCvUrl ? t('project.cv_included_note') : `<a href="dashboard.html">${t('project.cv_missing_note')}</a>`}</p>`;
+  }
+  html += `<p class="form-msg" id="shareMsg" style="text-align:center;"></p><p class="form-msg" id="actionMsg" style="text-align:center;"></p>`;
   return html;
 }
 
@@ -286,6 +300,7 @@ function render(){
       ${project.image_url ? `<img class="feed-card-image" src="${escapeHTML(project.image_url)}" alt="${escapeHTML(project.title)}" onerror="this.remove()">` : ''}
       <h1>${escapeHTML(project.title)}</h1>
       <p>${escapeHTML(project.pitch)}</p>
+      ${(project.skills || []).length > 0 ? `<div class="card-row" style="justify-content:center;margin-top:10px;">${project.skills.map(s => `<span class="chip skill-chip">${t('feed.skill.' + s)}</span>`).join('')}</div>` : ''}
       ${renderActionRow(isOwner, myCollab)}
       ${(isOwner || (myCollab && myCollab.status === 'approved')) ? `
         <p style="margin-top:14px;">
@@ -416,7 +431,7 @@ function wireEvents(){
   const participateBtn = document.getElementById('participateBtn');
   if (participateBtn) participateBtn.addEventListener('click', async () => {
     participateBtn.disabled = true;
-    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    const { error } = await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending', cv_url: myCvUrl });
     if (error){
       const actionMsg = document.getElementById('actionMsg');
       actionMsg.textContent = error.message; actionMsg.className = 'form-msg error';
@@ -430,7 +445,7 @@ function wireEvents(){
   if (reRequestBtn2) reRequestBtn2.addEventListener('click', async () => {
     reRequestBtn2.disabled = true;
     await supabaseClient.from('project_collaborators').delete().eq('project_id', projectId).eq('user_id', currentUser.id);
-    await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending' });
+    await supabaseClient.from('project_collaborators').insert({ project_id: projectId, user_id: currentUser.id, status: 'pending', cv_url: myCvUrl });
     loadProject();
   });
 
