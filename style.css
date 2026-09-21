@@ -90,7 +90,7 @@
     gap:20px;
   }
   .brand{display:flex;align-items:center;gap:10px;flex:none;}
-  .brand img{height:46px;width:auto;mix-blend-mode:multiply;}
+  .brand img{height:46px;width:auto;}
   .nav-links{display:none;align-items:center;gap:28px;font-size:14.5px;font-weight:500;color:var(--ink-soft);}
   @media(min-width:860px){.nav-links{display:flex;}}
   .nav-links a:hover{color:var(--blue-deep);}
@@ -311,7 +311,7 @@
   footer{border-top:1px solid var(--line);padding:36px 0;}
   .footer-inner{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center;}
   .footer-brand{display:flex;align-items:center;gap:10px;}
-  .footer-brand img{height:32px;mix-blend-mode:multiply;}
+  .footer-brand img{height:32px;}
   footer .fine{font-size:13px;color:var(--ink-soft);}
   footer a.contact{font-size:13.5px;color:var(--blue-deep);font-weight:600;}
 
@@ -381,11 +381,35 @@
 /* ---------- Simplified home page ---------- */
 .news-empty{text-align:center;color:var(--ink-soft);font-size:14.5px;padding:20px 0;}
 
-.home-hero{text-align:center;padding:64px 20px 56px;position:relative;}
+.home-hero{text-align:center;padding:64px 20px 56px;position:relative;overflow:hidden;}
 .home-hero .lang-slot-wrap{position:absolute;top:8px;right:20px;}
-.home-hero img.home-logo{height:84px;width:auto;margin:0 auto 20px;mix-blend-mode:multiply;}
+.home-hero > .wrap{position:relative;z-index:1;}
+.home-hero img.home-logo{height:84px;width:auto;margin:0 auto 20px;}
 .home-tagline{font-family:'Space Grotesk',sans-serif;font-size:19px;color:var(--ink-soft);margin-bottom:28px;}
 .home-hero-ctas{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;}
+
+/* Slow, soft ambient color drift behind the hero — subtle, not distracting. */
+.home-hero-bg{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none;}
+.home-hero-bg .blob{position:absolute;border-radius:50%;filter:blur(60px);opacity:0.3;}
+.home-hero-bg .blob-a{
+  width:320px;height:320px;background:var(--blue);top:-90px;left:-70px;
+  animation:blob-drift-a 22s ease-in-out infinite;
+}
+.home-hero-bg .blob-b{
+  width:280px;height:280px;background:var(--orange);bottom:-90px;right:-60px;
+  animation:blob-drift-b 26s ease-in-out infinite;
+}
+@keyframes blob-drift-a{
+  0%,100%{transform:translate(0,0) scale(1);}
+  50%{transform:translate(36px,28px) scale(1.12);}
+}
+@keyframes blob-drift-b{
+  0%,100%{transform:translate(0,0) scale(1);}
+  50%{transform:translate(-30px,-22px) scale(1.08);}
+}
+@media(prefers-reduced-motion:reduce){
+  .home-hero-bg .blob{animation:none;}
+}
 
 .home-more{padding:20px 20px 72px;}
 
@@ -423,9 +447,13 @@
    scrolling needed to see all 3 sections. Desktop keeps the spacious
    version above; this only kicks in at phone widths. */
 @media(max-width:640px){
-  .home-hero{padding:36px 16px 14px;}
-  .home-hero .lang-slot-wrap{top:4px;right:16px;}
-  .home-hero img.home-logo{height:38px;margin:0 auto 6px;}
+  .home-hero{padding:14px 16px 14px;}
+  /* Logo is now a wide crop (see assets/logo.png) — on the narrow phone
+     width it doesn't reliably fit beside a corner-pinned switcher at any
+     reasonable logo size, so give the switcher its own row instead of
+     overlapping. */
+  .home-hero .lang-slot-wrap{position:static;display:flex;justify-content:flex-end;margin:0 0 10px;}
+  .home-hero img.home-logo{height:34px;margin:0 auto 6px;}
   .home-tagline{font-size:13px;margin-bottom:12px;}
   .home-hero-ctas{gap:6px;}
   .home-hero-ctas .btn{padding:7px 12px;font-size:12px;}
