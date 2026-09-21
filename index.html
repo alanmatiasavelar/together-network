@@ -48,7 +48,7 @@
   <section class="home-more">
     <div class="wrap reveal" style="text-align:center;">
       <h2 data-i18n="home.more_heading">Want the full picture?</h2>
-      <div class="hero-ctas" style="justify-content:center;margin-top:18px;">
+      <div class="hero-ctas home-more-ctas">
         <a class="btn btn-ghost" href="about.html" data-i18n="home.more_cta">Learn more</a>
       </div>
     </div>
@@ -56,7 +56,7 @@
 
 </main>
 
-<footer>
+<footer class="home-footer">
   <div class="wrap footer-inner">
     <div class="footer-brand"><img src="assets/logo.jpg" alt="Together"/></div>
     <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
@@ -89,7 +89,7 @@
           <h3>${escapeHTML(p.title)}</h3>
           <p>${escapeHTML(p.pitch)}</p>
           <span class="owner">${t('feed.manager')} ${escapeHTML(p.owner_name)}</span>
-          <div style="margin-top:14px;"><a class="btn btn-ghost btn-small" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a></div>
+          <div class="spotlight-cta"><a class="btn btn-ghost btn-small" href="learn-more.html?id=${p.id}">${t('feed.learn_more')}</a></div>
         </div>
       </div>
     `;
