@@ -106,6 +106,16 @@
     </div>
   </section>
 
+  <section id="news" class="news-section">
+    <div class="wrap">
+      <div class="section-head reveal" style="margin-left:auto;margin-right:auto;text-align:center;">
+        <p class="eyebrow" style="justify-content:center;" data-i18n="news.eyebrow">Happening now</p>
+        <h2 data-i18n="news.heading">Real projects, moving right now.</h2>
+      </div>
+      <div id="newsPanel" class="news-panel reveal"><div class="loading-state" style="justify-content:center;"><span class="spinner" aria-hidden="true"></span><span data-i18n="common.loading">Loading…</span></div></div>
+    </div>
+  </section>
+
   <section id="roles">
     <div class="wrap">
       <div class="section-head reveal">
@@ -256,7 +266,35 @@
   wireLangSwitcher();
   applyStaticTranslations();
 
-  function onLangChange(){ /* all text here is static, applyStaticTranslations() already covers it */ }
+  function onLangChange(){
+    applyStaticTranslations();
+    loadNews(); // re-render in case the empty-state message needs to switch language
+  }
+
+  async function loadNews(){
+    const panel = document.getElementById('newsPanel');
+    if (!supabaseClient){ panel.innerHTML = ''; return; }
+    const { data, error } = await supabaseClient
+      .from('projects')
+      .select('id, title, pitch, image_url, owner_name')
+      .order('updated_at', { ascending: false })
+      .limit(6);
+    if (error || !data || data.length === 0){
+      panel.innerHTML = `<p class="news-empty">${t('news.empty')}</p>`;
+      return;
+    }
+    panel.innerHTML = `<div class="news-row">${data.map(p => `
+      <a class="archive-card" href="learn-more.html?id=${p.id}">
+        ${p.image_url ? `<img src="${escapeHTML(p.image_url)}" alt="${escapeHTML(p.title)}" loading="lazy" onerror="this.remove()">` : ''}
+        <div class="archive-card-body">
+          <h4>${escapeHTML(p.title)}</h4>
+          <p>${escapeHTML(p.pitch)}</p>
+          <span class="owner">${t('feed.manager')} ${escapeHTML(p.owner_name)}</span>
+        </div>
+      </a>
+    `).join('')}</div>`;
+  }
+  loadNews();
 
   // Personalize the nav if the visitor is already logged in — purely a nice-to-have,
   // the rest of the page works fine even if this never runs.

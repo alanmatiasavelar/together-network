@@ -27,6 +27,7 @@ en: {
 
   "feed.eyebrow":"Live feed","feed.heading":"What people are building right now.","feed.cta":"Go to the feed →",
   "idea.eyebrow":"The idea",
+  "news.eyebrow":"Happening now","news.heading":"Real projects, moving right now.","news.empty":"No projects yet — be the first to start one.",
   "idea.text_1":"A social network built around","idea.text_bold":"niches, not noise","idea.text_2":"— where the feed is made of real projects and real goals.",
   "idea.text_3":"Anyone can create one, and anyone can join one: individuals, third-sector organizations, private companies, and government or public bodies.",
 
@@ -270,6 +271,7 @@ es: {
 
   "feed.eyebrow":"Proyectos en vivo","feed.heading":"Esto es lo que la gente está construyendo ahora.","feed.cta":"Ver todos los proyectos →",
   "idea.eyebrow":"La idea",
+  "news.eyebrow":"Sucediendo ahora","news.heading":"Proyectos reales, en movimiento ahora mismo.","news.empty":"Aún no hay proyectos — sé el primero en iniciar uno.",
   "idea.text_1":"Una red social basada en","idea.text_bold":"nichos, no ruido","idea.text_2":"— donde el feed está hecho de proyectos y metas reales.",
   "idea.text_3":"Cualquiera puede crear uno, y cualquiera puede unirse: personas, organizaciones del tercer sector, empresas privadas y organismos gubernamentales o públicos.",
 
@@ -513,6 +515,7 @@ fr: {
 
   "feed.eyebrow":"Flux en direct","feed.heading":"Ce que les gens construisent en ce moment.","feed.cta":"Voir tous les projets →",
   "idea.eyebrow":"L'idée",
+  "news.eyebrow":"En ce moment","news.heading":"De vrais projets, en mouvement en ce moment.","news.empty":"Pas encore de projet — soyez le premier à en lancer un.",
   "idea.text_1":"Un réseau social construit autour de","idea.text_bold":"niches, pas de bruit","idea.text_2":"— où le flux est fait de vrais projets et de vrais objectifs.",
   "idea.text_3":"Tout le monde peut en créer un, et tout le monde peut en rejoindre un : individus, organisations du tiers secteur, entreprises privées et organismes gouvernementaux ou publics.",
 
@@ -756,6 +759,7 @@ pt: {
 
   "feed.eyebrow":"Feed ao vivo","feed.heading":"O que as pessoas estão construindo agora.","feed.cta":"Ver todos os projetos →",
   "idea.eyebrow":"A ideia",
+  "news.eyebrow":"Acontecendo agora","news.heading":"Projetos reais, em movimento agora.","news.empty":"Ainda não há projetos — seja o primeiro a começar um.",
   "idea.text_1":"Uma rede social construída em torno de","idea.text_bold":"nichos, não ruído","idea.text_2":"— onde o feed é feito de projetos e metas reais.",
   "idea.text_3":"Qualquer pessoa pode criar um, e qualquer pessoa pode participar: indivíduos, organizações do terceiro setor, empresas privadas e órgãos governamentais ou públicos.",
 

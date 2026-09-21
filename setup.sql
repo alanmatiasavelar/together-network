@@ -1946,3 +1946,28 @@ begin
   return new;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- PROJECT ACTIVITY TIMESTAMP: powers the "recently created or updated"
+-- section on the home page (index.html). New rows get updated_at =
+-- created_at at insert time, and a trigger bumps it on any later update —
+-- so ordering by updated_at alone naturally captures "created or updated,
+-- most recent first" without needing a separate created_at comparison.
+-- ---------------------------------------------------------------------------
+alter table projects add column if not exists updated_at timestamptz not null default now();
+update projects set updated_at = created_at where updated_at is distinct from created_at;
+
+create or replace function public.touch_projects_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_projects_touch_updated_at on projects;
+create trigger trg_projects_touch_updated_at
+  before update on projects
+  for each row execute function public.touch_projects_updated_at();

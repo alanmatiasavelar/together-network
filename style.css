@@ -369,6 +369,14 @@
 }
 .auth-card h1{font-size:26px;margin-bottom:8px;}
 .auth-card .auth-sub{color:var(--ink-soft);font-size:14.5px;margin-bottom:26px;}
+
+/* ---------- Home page: "happening now" centralized card ---------- */
+.news-panel{
+  max-width:960px;margin:0 auto;background:var(--panel);border:1px solid var(--line);
+  border-radius:var(--radius-lg);padding:40px 32px;box-shadow:var(--shadow);
+}
+.news-row{display:flex;flex-wrap:wrap;justify-content:center;gap:16px;}
+.news-empty{text-align:center;color:var(--ink-soft);font-size:14.5px;padding:20px 0;}
 .auth-switch{margin-top:22px;text-align:center;font-size:14px;color:var(--ink-soft);}
 .auth-switch a{color:var(--blue-deep);font-weight:600;}
 .auth-back{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-soft);margin-bottom:22px;}
