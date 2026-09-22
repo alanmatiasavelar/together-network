@@ -157,6 +157,7 @@
         document.getElementById('homeCtas').innerHTML = `
           <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
           <a class="btn btn-primary" href="projects.html">${t('nav.go_to_feed')}</a>
+          <a class="btn btn-ghost" href="feed.html">${t('cta.go_to_feed')}</a>
         `;
       }
     }).catch(() => {});

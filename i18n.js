@@ -31,6 +31,7 @@ en: {
   "idea.eyebrow":"The idea",
   "news.eyebrow":"Happening now","news.heading":"Real projects, moving right now.","news.empty":"No projects yet — be the first to start one.",
   "home.more_heading":"Want the full picture?","home.more_cta":"Learn more",
+  "cta.go_to_feed":"Go to feed",
   "idea.text_1":"A social network built around","idea.text_bold":"niches, not noise","idea.text_2":"— where the feed is made of real projects and real goals.",
   "idea.text_3":"Anyone can create one, and anyone can join one: individuals, third-sector organizations, private companies, and government or public bodies.",
 
@@ -273,7 +274,7 @@ en: {
 },
 
 es: {
-  "nav.feed":"Proyectos","nav.home":"Inicio","nav.how":"Cómo funciona","nav.pricing":"Precios",
+  "nav.feed":"Feed","nav.home":"Inicio","nav.how":"Cómo funciona","nav.pricing":"Precios",
   "nav.login":"Iniciar sesión","nav.signup":"Registrarse","nav.logout":"Cerrar sesión","nav.go_to_feed":"Ir a proyectos","nav.projects":"Proyectos",
   "nav.start_project":"Iniciar un nuevo proyecto",
   "footer.tagline":"Une esfuerzos, no feeds.","footer.contact":"Contacto →","footer.terms":"Términos de uso",
@@ -296,6 +297,7 @@ es: {
   "feed.posts_empty":"Aún no hay novedades — vuelve pronto.",
   "idea.eyebrow":"La idea",
   "home.more_heading":"¿Quieres ver todo?","home.more_cta":"Saber más",
+  "cta.go_to_feed":"Ir al feed",
   "news.eyebrow":"Sucediendo ahora","news.heading":"Proyectos reales, en movimiento ahora mismo.","news.empty":"Aún no hay proyectos — sé el primero en iniciar uno.",
   "idea.text_1":"Una red social basada en","idea.text_bold":"nichos, no ruido","idea.text_2":"— donde el feed está hecho de proyectos y metas reales.",
   "idea.text_3":"Cualquiera puede crear uno, y cualquiera puede unirse: personas, organizaciones del tercer sector, empresas privadas y organismos gubernamentales o públicos.",
@@ -539,7 +541,7 @@ es: {
 },
 
 fr: {
-  "nav.feed":"Projets","nav.home":"Accueil","nav.how":"Comment ça marche","nav.pricing":"Tarifs",
+  "nav.feed":"Flux","nav.home":"Accueil","nav.how":"Comment ça marche","nav.pricing":"Tarifs",
   "nav.login":"Se connecter","nav.signup":"S'inscrire","nav.logout":"Se déconnecter","nav.go_to_feed":"Voir les projets","nav.projects":"Projets",
   "nav.start_project":"Démarrer un nouveau projet",
   "footer.tagline":"Unissez vos efforts, pas vos flux.","footer.contact":"Contact →","footer.terms":"Conditions d'utilisation",
@@ -562,6 +564,7 @@ fr: {
   "feed.posts_empty":"Pas encore de nouveautés — revenez bientôt.",
   "idea.eyebrow":"L'idée",
   "home.more_heading":"Envie d'en voir plus ?","home.more_cta":"En savoir plus",
+  "cta.go_to_feed":"Voir le flux",
   "news.eyebrow":"En ce moment","news.heading":"De vrais projets, en mouvement en ce moment.","news.empty":"Pas encore de projet — soyez le premier à en lancer un.",
   "idea.text_1":"Un réseau social construit autour de","idea.text_bold":"niches, pas de bruit","idea.text_2":"— où le flux est fait de vrais projets et de vrais objectifs.",
   "idea.text_3":"Tout le monde peut en créer un, et tout le monde peut en rejoindre un : individus, organisations du tiers secteur, entreprises privées et organismes gouvernementaux ou publics.",
@@ -805,7 +808,7 @@ fr: {
 },
 
 pt: {
-  "nav.feed":"Projetos","nav.home":"Início","nav.how":"Como funciona","nav.pricing":"Preços",
+  "nav.feed":"Feed","nav.home":"Início","nav.how":"Como funciona","nav.pricing":"Preços",
   "nav.login":"Entrar","nav.signup":"Cadastrar","nav.logout":"Sair","nav.go_to_feed":"Ir para projetos","nav.projects":"Projetos",
   "nav.start_project":"Iniciar um novo projeto",
   "footer.tagline":"Junte esforços, não feeds.","footer.contact":"Contato →","footer.terms":"Termos de uso",
@@ -828,6 +831,7 @@ pt: {
   "feed.posts_empty":"Ainda não há novidades — volte em breve.",
   "idea.eyebrow":"A ideia",
   "home.more_heading":"Quer ver tudo?","home.more_cta":"Saiba mais",
+  "cta.go_to_feed":"Ir para o feed",
   "news.eyebrow":"Acontecendo agora","news.heading":"Projetos reais, em movimento agora.","news.empty":"Ainda não há projetos — seja o primeiro a começar um.",
   "idea.text_1":"Uma rede social construída em torno de","idea.text_bold":"nichos, não ruído","idea.text_2":"— onde o feed é feito de projetos e metas reais.",
   "idea.text_3":"Qualquer pessoa pode criar um, e qualquer pessoa pode participar: indivíduos, organizações do terceiro setor, empresas privadas e órgãos governamentais ou públicos.",
