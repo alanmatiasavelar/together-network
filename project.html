@@ -133,10 +133,17 @@ function maybeAutoFitActiveTab(){
     wbsFitApplied = true;
     const fit = computeFitZoom('wbsScroll', true);
     if (fit !== null && fit < wbsZoom){ wbsZoom = fit; render(); }
+  } else if ((activeTab === 'usecases' || activeTab === 'architecture') && !diagramFitApplied[activeTab]){
+    diagramFitApplied[activeTab] = true;
+    const fit = computeFitZoom('diagramScroll-' + activeTab, true);
+    if (fit !== null && fit < diagramZoom[activeTab]){ diagramZoom[activeTab] = fit; render(); }
   }
 }
 
-function renderChartToolbar(prefix, zoom){
+function renderChartToolbar(prefix, zoom, exportMode){
+  const exportBtn = exportMode === 'svg'
+    ? `<button type="button" class="btn btn-ghost btn-small" data-export-svg="${prefix}">⤓ ${t('chart.export_svg')}</button>`
+    : `<button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>`;
   return `
     <div class="chart-toolbar">
       <div class="zoom-group">
@@ -146,7 +153,7 @@ function renderChartToolbar(prefix, zoom){
       </div>
       <button type="button" class="btn btn-ghost btn-small" data-zoom-reset="${prefix}">${t('chart.zoom_reset')}</button>
       <span class="spacer"></span>
-      <button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>
+      ${exportBtn}
     </div>
   `;
 }
@@ -1184,6 +1191,17 @@ let diagramDirty = { usecases: false, architecture: false };
 let diagramMode = { usecases: 'idle', architecture: 'idle' };
 let diagramConnectFrom = { usecases: null, architecture: null };
 let diagramSelected = { usecases: null, architecture: null };
+let diagramZoom = { usecases: 1, architecture: 1 };
+let diagramFitApplied = { usecases: false, architecture: false };
+
+// Lets zoom in/out/reset buttons on the Gantt/WBS charts and the SysML
+// diagrams all share one set of handlers instead of branching per prefix.
+const ZOOM_STATE = {
+  gantt: { get: () => ganttZoom, set: v => { ganttZoom = v; } },
+  wbs: { get: () => wbsZoom, set: v => { wbsZoom = v; } },
+  usecases: { get: () => diagramZoom.usecases, set: v => { diagramZoom.usecases = v; } },
+  architecture: { get: () => diagramZoom.architecture, set: v => { diagramZoom.architecture = v; } }
+};
 
 function diagramNodeById(type, id){
   return diagramState[type].nodes.find(n => n.id === id);
@@ -1233,9 +1251,10 @@ function diagramShapeSvg(node, isSelected){
   `;
 }
 
-function buildDiagramSvgHTML(type){
+function buildDiagramSvgHTML(type, zoomOverride){
   const state = diagramState[type];
   const selected = diagramSelected[type];
+  const zoom = zoomOverride || diagramZoom[type] || 1;
   let edgesHtml = '';
   state.edges.forEach(edge => {
     const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
@@ -1253,7 +1272,7 @@ function buildDiagramSvgHTML(type){
     nodesHtml += `<g class="diagram-node" data-node-id="${node.id}" transform="translate(${node.x},${node.y})">${diagramShapeSvg(node, isSel)}</g>`;
   });
   return `
-    <svg id="diagramSvg-${type}" class="diagram-svg" width="${DIAGRAM_CANVAS_W}" height="${DIAGRAM_CANVAS_H}" data-diagram-type="${type}">
+    <svg id="diagramSvg-${type}" class="diagram-svg" viewBox="0 0 ${DIAGRAM_CANVAS_W} ${DIAGRAM_CANVAS_H}" width="${DIAGRAM_CANVAS_W * zoom}" height="${DIAGRAM_CANVAS_H * zoom}" data-diagram-type="${type}">
       <defs>
         <marker id="diagramArrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
           <path d="M0,0 L7,3 L0,6 Z" fill="#8a97a3"></path>
@@ -1263,6 +1282,48 @@ function buildDiagramSvgHTML(type){
       <g class="diagram-nodes">${nodesHtml}</g>
     </svg>
   `;
+}
+
+// Standalone-document styles for exported diagrams: the live page's
+// .diagram-* classes live in style.css and reference CSS custom properties
+// defined on :root, neither of which travels with a plain .svg file opened
+// outside the browser tab — so the exported figure re-states the same
+// rules with literal color values instead of var(...) references.
+const DIAGRAM_EXPORT_CSS = `
+  .diagram-shape{fill:#FFFFFF;stroke:#3E8FD0;stroke-width:1.5;}
+  .diagram-label{font-family:'Space Grotesk',Arial,sans-serif;font-size:12.5px;font-weight:600;fill:#2C3742;}
+  .diagram-block-stereotype{font-family:'IBM Plex Mono',monospace;font-size:9.5px;fill:#5A6672;}
+  .diagram-block-divider{stroke:#DFE5E9;stroke-width:1;}
+  .diagram-block-desc{font-family:'Inter',Arial,sans-serif;font-size:10px;fill:#5A6672;}
+  .diagram-edge{stroke:#8a97a3;stroke-width:1.5;}
+`;
+
+// True vector export (not a html2canvas raster like the Gantt/WBS PNG
+// export) — the diagram is already plain SVG, so this just serializes it
+// as a standalone, styled, full-resolution document, ignoring whatever
+// zoom level or selection highlight is currently on screen.
+function exportDiagramSvg(type){
+  const state = diagramState[type];
+  if (!state || (state.nodes.length === 0 && state.edges.length === 0)){
+    alert(t('project.diagram_export_empty'));
+    return;
+  }
+  const prevSelected = diagramSelected[type];
+  diagramSelected[type] = null;
+  const svgMarkup = buildDiagramSvgHTML(type, 1);
+  diagramSelected[type] = prevSelected;
+
+  const withStyle = svgMarkup
+    .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+    .replace('</defs>', `</defs><style>${DIAGRAM_EXPORT_CSS}</style><rect width="${DIAGRAM_CANVAS_W}" height="${DIAGRAM_CANVAS_H}" fill="#ffffff"></rect>`);
+  const src = '<?xml version="1.0" standalone="no"?>\r\n' + withStyle;
+  const blob = new Blob([src], { type: 'image/svg+xml;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const projectTitle = (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_');
+  const a = document.createElement('a');
+  a.href = url; a.download = `${projectTitle}-${type}.svg`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderDiagramPanel(type){
@@ -1276,18 +1337,20 @@ function renderDiagramPanel(type){
     <div class="diagram-toolbar">
       ${palette.map(p => `<button class="btn btn-ghost btn-small" data-diagram-add="${p.kind}" data-diagram-type="${type}" type="button">+ ${p.label()}</button>`).join('')}
       <button class="btn btn-ghost btn-small" data-diagram-connect data-diagram-type="${type}" type="button">🔗 ${t('project.diagram_connect')}</button>
+      <button class="btn btn-ghost btn-small" data-diagram-rename data-diagram-type="${type}" type="button">✎ ${t('project.diagram_rename')}</button>
       <button class="btn btn-ghost btn-small" data-diagram-delete data-diagram-type="${type}" type="button">${t('project.diagram_delete_selected')}</button>
       <span class="spacer"></span>
       <span class="credits-note" id="diagramDirtyNote-${type}">${diagramDirty[type] ? t('project.diagram_unsaved') : ''}</span>
       <button class="btn btn-primary btn-small" data-diagram-save data-diagram-type="${type}" type="button">${t('common.save')}</button>
     </div>
     <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')}</p>
-    <div class="diagram-canvas-wrap">${buildDiagramSvgHTML(type)}</div>
+    ${renderChartToolbar(type, diagramZoom[type], 'svg')}
+    <div class="diagram-canvas-wrap" id="diagramScroll-${type}">${buildDiagramSvgHTML(type)}</div>
   `;
 }
 
 function refreshDiagramCanvas(type){
-  const wrap = document.querySelector(`.tab-panel[data-panel="${type}"] .diagram-canvas-wrap`);
+  const wrap = document.getElementById('diagramScroll-' + type);
   if (!wrap) return;
   wrap.innerHTML = buildDiagramSvgHTML(type);
   wireDiagramCanvasInteractions(type);
@@ -1296,6 +1359,25 @@ function refreshDiagramCanvas(type){
 function updateDiagramDirtyNote(type){
   const note = document.getElementById('diagramDirtyNote-' + type);
   if (note) note.textContent = diagramDirty[type] ? t('project.diagram_unsaved') : '';
+}
+
+// Shared by the dblclick-on-shape shortcut and the toolbar Rename button —
+// the button exists because double-click renaming is unreliable on touch
+// devices, where there's no native double-tap gesture to hook into.
+function renameDiagramNode(type, nodeId){
+  const node = diagramNodeById(type, nodeId);
+  if (!node) return;
+  const next = prompt(t('project.diagram_rename_prompt'), node.label);
+  if (next !== null && next.trim()){
+    node.label = next.trim();
+    diagramDirty[type] = true;
+  }
+  if (node.kind === 'block' && next !== null){
+    const desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
+    if (desc !== null){ node.sublabel = desc.trim(); diagramDirty[type] = true; }
+  }
+  updateDiagramDirtyNote(type);
+  refreshDiagramCanvas(type);
 }
 
 function wireDiagramCanvasInteractions(type){
@@ -1348,19 +1430,7 @@ function wireDiagramCanvasInteractions(type){
       dragging = { nodeId, dx: p.x - node.x, dy: p.y - node.y };
       refreshDiagramCanvas(type);
     });
-    g.addEventListener('dblclick', () => {
-      const node = diagramNodeById(type, nodeId);
-      const next = prompt(t('project.diagram_rename_prompt'), node.label);
-      if (next !== null && next.trim()){
-        node.label = next.trim();
-        markDirty();
-        refreshDiagramCanvas(type);
-      }
-      if (node.kind === 'block' && next !== null){
-        const desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
-        if (desc !== null){ node.sublabel = desc.trim(); markDirty(); refreshDiagramCanvas(type); }
-      }
-    });
+    g.addEventListener('dblclick', () => renameDiagramNode(type, nodeId));
   });
 
   svg.querySelectorAll('.diagram-edge').forEach(line => {
@@ -1412,6 +1482,16 @@ function wireDiagramToolbars(){
     }
     diagramMode[type] = 'connecting';
     diagramConnectFrom[type] = diagramSelected[type].id;
+  }));
+
+  content.querySelectorAll('[data-diagram-rename]').forEach(btn => btn.addEventListener('click', () => {
+    const type = btn.dataset.diagramType;
+    const sel = diagramSelected[type];
+    if (!sel || sel.kind !== 'node'){
+      alert(t('project.diagram_rename_hint'));
+      return;
+    }
+    renameDiagramNode(type, sel.id);
   }));
 
   content.querySelectorAll('[data-diagram-delete]').forEach(btn => btn.addEventListener('click', () => {
@@ -2122,18 +2202,17 @@ function wireEvents(){
   content.querySelectorAll('[data-move-wbs-down]').forEach(btn => btn.addEventListener('click', () => moveWbsItem(btn.dataset.moveWbsDown, 'down')));
 
   content.querySelectorAll('[data-zoom-in]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.zoomIn === 'gantt') ganttZoom = clampZoom(ganttZoom * ZOOM_FACTOR);
-    else wbsZoom = clampZoom(wbsZoom * ZOOM_FACTOR);
+    const z = ZOOM_STATE[btn.dataset.zoomIn];
+    z.set(clampZoom(z.get() * ZOOM_FACTOR));
     render();
   }));
   content.querySelectorAll('[data-zoom-out]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.zoomOut === 'gantt') ganttZoom = clampZoom(ganttZoom / ZOOM_FACTOR);
-    else wbsZoom = clampZoom(wbsZoom / ZOOM_FACTOR);
+    const z = ZOOM_STATE[btn.dataset.zoomOut];
+    z.set(clampZoom(z.get() / ZOOM_FACTOR));
     render();
   }));
   content.querySelectorAll('[data-zoom-reset]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.zoomReset === 'gantt') ganttZoom = 1;
-    else wbsZoom = 1;
+    ZOOM_STATE[btn.dataset.zoomReset].set(1);
     render();
   }));
   content.querySelectorAll('[data-export-png]').forEach(btn => btn.addEventListener('click', () => {
@@ -2141,6 +2220,9 @@ function wireEvents(){
     const projectTitle = (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_');
     if (prefix === 'gantt') exportChartToPng('ganttScroll', `${projectTitle}-gantt.png`);
     else exportChartToPng('wbsScroll', `${projectTitle}-wbs.png`);
+  }));
+  content.querySelectorAll('[data-export-svg]').forEach(btn => btn.addEventListener('click', () => {
+    exportDiagramSvg(btn.dataset.exportSvg);
   }));
 
   // --- Team tab ---
