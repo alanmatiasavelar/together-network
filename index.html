@@ -156,7 +156,7 @@
         const name = session.user.user_metadata?.display_name || session.user.email.split('@')[0];
         document.getElementById('homeCtas').innerHTML = `
           <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
-          <a class="btn btn-primary" href="feed.html">${t('nav.go_to_feed')}</a>
+          <a class="btn btn-primary" href="projects.html">${t('nav.go_to_feed')}</a>
         `;
       }
     }).catch(() => {});

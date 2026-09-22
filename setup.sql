@@ -2079,3 +2079,31 @@ create policy "Team can create diagrams" on project_diagrams
 drop policy if exists "Team can update diagrams" on project_diagrams;
 create policy "Team can update diagrams" on project_diagrams
   for update using (public.is_project_team_member(project_id));
+
+-- ---------------------------------------------------------------------------
+-- POST LIKES: one like per user per post, like any social feed — enforced
+-- by the unique constraint itself, not just client-side UI, so a double-
+-- click or a second tab can never produce two likes. Powers the like button
+-- on feed.html (the dedicated posts feed, separate from projects.html).
+-- ---------------------------------------------------------------------------
+create table if not exists project_post_likes (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references project_posts(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (post_id, user_id)
+);
+
+alter table project_post_likes enable row level security;
+
+drop policy if exists "Public can read post likes" on project_post_likes;
+create policy "Public can read post likes" on project_post_likes
+  for select using (true);
+
+drop policy if exists "Users can like a post" on project_post_likes;
+create policy "Users can like a post" on project_post_likes
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "Users can unlike their own like" on project_post_likes;
+create policy "Users can unlike their own like" on project_post_likes
+  for delete using (auth.uid() = user_id);

@@ -72,7 +72,7 @@
 
   if (supabaseClient) {
     supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      if (session && session.user) window.location.href = 'feed.html';
+      if (session && session.user) window.location.href = 'projects.html';
     }).catch(() => {});
   }
 
@@ -107,7 +107,7 @@
     if (data.session){
       msg.textContent = t('signup.msg_success');
       msg.className = 'form-msg ok';
-      window.location.href = 'feed.html';
+      window.location.href = 'projects.html';
     } else {
       msg.textContent = t('signup.msg_confirm');
       msg.className = 'form-msg ok';

@@ -23,7 +23,7 @@
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="index.html"><img src="assets/logo.png" alt="Together"/></a>
-    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <nav class="nav-links"><a href="projects.html" data-i18n="nav.projects">Projects</a> <a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
     <div class="nav-auth" id="navAuth">
       <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
       <a class="btn btn-primary" href="signup.html" data-i18n="nav.signup">Sign up</a>
@@ -35,7 +35,7 @@
 
 <main>
   <div class="wrap" style="padding-top:40px;padding-bottom:60px;max-width:780px;">
-    <a class="auth-back" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <a class="auth-back" href="projects.html" data-i18n="common.back_to_feed">← Back to projects</a>
     <div id="pageContent"><div class="loading-state"><span class="spinner" aria-hidden="true"></span><span data-i18n="common.loading">Loading…</span></div></div>
   </div>
 </main>
@@ -2242,7 +2242,7 @@ function wireEvents(){
     adminDeleteBtn.disabled = true;
     const { error } = await supabaseClient.from('projects').delete().eq('id', projectId);
     if (error){ alert(error.message); adminDeleteBtn.disabled = false; return; }
-    window.location.href = 'feed.html';
+    window.location.href = 'projects.html';
   });
 
   // --- Systems Engineering diagrams ---

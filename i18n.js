@@ -8,10 +8,10 @@
 const TRANSLATIONS = {
 en: {
   "nav.feed":"Feed","nav.home":"Home","nav.how":"How it works","nav.pricing":"Pricing",
-  "nav.login":"Log in","nav.signup":"Sign up","nav.logout":"Log out","nav.go_to_feed":"Go to feed",
+  "nav.login":"Log in","nav.signup":"Sign up","nav.logout":"Log out","nav.go_to_feed":"Go to projects","nav.projects":"Projects",
   "nav.start_project":"Start a new project",
   "footer.tagline":"Join efforts, not feeds.","footer.contact":"Contact →","footer.terms":"Terms of Use",
-  "common.back_to_feed":"← Back to feed","common.back_to_home":"← Back to home",
+  "common.back_to_feed":"← Back to projects","common.back_to_home":"← Back to home",
   "common.save":"Save","common.update":"Update","common.add":"Add","common.cancel":"Cancel",
   "common.delete":"Delete","common.edit":"Edit","common.close":"Close","common.loading":"Loading…",
   "common.copy":"Copy","common.copied":"Copied!",
@@ -23,10 +23,11 @@ en: {
   "hero.eyebrow":"Pre-launch · ConOps v1",
   "hero.headline_1":"Stop scrolling. Start","hero.headline_em":"building","hero.headline_2":"— together.",
   "hero.lede":"Together is a place to turn an idea into a project. Pool money, time, and tools with people, companies, nonprofits, and government bodies who want to help build it — instead of just watching a feed.",
-  "hero.cta_primary":"Get started free","hero.cta_secondary":"See the feed",
+  "hero.cta_primary":"Get started free","hero.cta_secondary":"See the projects",
   "hero.note":"Free to start · $2 for the full toolkit",
 
-  "feed.eyebrow":"Live feed","feed.heading":"What people are building right now.","feed.cta":"Go to the feed →",
+  "feed.eyebrow":"Live projects","feed.heading":"What people are building right now.","feed.cta":"Go to all projects →",
+  "feed.posts_empty":"No updates yet — check back soon.",
   "idea.eyebrow":"The idea",
   "news.eyebrow":"Happening now","news.heading":"Real projects, moving right now.","news.empty":"No projects yet — be the first to start one.",
   "home.more_heading":"Want the full picture?","home.more_cta":"Learn more",
@@ -123,7 +124,7 @@ en: {
 
   "premium.heading":"Go Premium","premium.sub_login_first":"Log in first — Premium is tied to your account.",
   "premium.already_title":"You're already Premium ✓","premium.already_sub":"Unlimited projects, unlocked.",
-  "premium.go_to_feed":"Go to the feed",
+  "premium.go_to_feed":"Go to projects",
   "premium.sub":"Monthly subscription, unlocks unlimited projects on your account.","premium.price_note":"/month via Stripe",
   "premium.li1":"Everything in Basic","premium.li2":"Unlimited projects",
   "premium.li3":"Full workspace & payment integrations (as they roll out)","premium.li4":"AI dashboard tools (as they roll out)",
@@ -273,7 +274,7 @@ en: {
 
 es: {
   "nav.feed":"Proyectos","nav.home":"Inicio","nav.how":"Cómo funciona","nav.pricing":"Precios",
-  "nav.login":"Iniciar sesión","nav.signup":"Registrarse","nav.logout":"Cerrar sesión","nav.go_to_feed":"Ir a proyectos",
+  "nav.login":"Iniciar sesión","nav.signup":"Registrarse","nav.logout":"Cerrar sesión","nav.go_to_feed":"Ir a proyectos","nav.projects":"Proyectos",
   "nav.start_project":"Iniciar un nuevo proyecto",
   "footer.tagline":"Une esfuerzos, no feeds.","footer.contact":"Contacto →","footer.terms":"Términos de uso",
   "common.back_to_feed":"← Volver a proyectos","common.back_to_home":"← Volver al inicio",
@@ -292,6 +293,7 @@ es: {
   "hero.note":"Gratis para empezar · $2 por todas las herramientas",
 
   "feed.eyebrow":"Proyectos en vivo","feed.heading":"Esto es lo que la gente está construyendo ahora.","feed.cta":"Ver todos los proyectos →",
+  "feed.posts_empty":"Aún no hay novedades — vuelve pronto.",
   "idea.eyebrow":"La idea",
   "home.more_heading":"¿Quieres ver todo?","home.more_cta":"Saber más",
   "news.eyebrow":"Sucediendo ahora","news.heading":"Proyectos reales, en movimiento ahora mismo.","news.empty":"Aún no hay proyectos — sé el primero en iniciar uno.",
@@ -538,7 +540,7 @@ es: {
 
 fr: {
   "nav.feed":"Projets","nav.home":"Accueil","nav.how":"Comment ça marche","nav.pricing":"Tarifs",
-  "nav.login":"Se connecter","nav.signup":"S'inscrire","nav.logout":"Se déconnecter","nav.go_to_feed":"Voir les projets",
+  "nav.login":"Se connecter","nav.signup":"S'inscrire","nav.logout":"Se déconnecter","nav.go_to_feed":"Voir les projets","nav.projects":"Projets",
   "nav.start_project":"Démarrer un nouveau projet",
   "footer.tagline":"Unissez vos efforts, pas vos flux.","footer.contact":"Contact →","footer.terms":"Conditions d'utilisation",
   "common.back_to_feed":"← Retour aux projets","common.back_to_home":"← Retour à l'accueil",
@@ -556,7 +558,8 @@ fr: {
   "hero.cta_primary":"Commencer gratuitement","hero.cta_secondary":"Voir les projets",
   "hero.note":"Gratuit pour commencer · $2 pour tous les outils",
 
-  "feed.eyebrow":"Flux en direct","feed.heading":"Ce que les gens construisent en ce moment.","feed.cta":"Voir tous les projets →",
+  "feed.eyebrow":"Projets en direct","feed.heading":"Ce que les gens construisent en ce moment.","feed.cta":"Voir tous les projets →",
+  "feed.posts_empty":"Pas encore de nouveautés — revenez bientôt.",
   "idea.eyebrow":"L'idée",
   "home.more_heading":"Envie d'en voir plus ?","home.more_cta":"En savoir plus",
   "news.eyebrow":"En ce moment","news.heading":"De vrais projets, en mouvement en ce moment.","news.empty":"Pas encore de projet — soyez le premier à en lancer un.",
@@ -803,7 +806,7 @@ fr: {
 
 pt: {
   "nav.feed":"Projetos","nav.home":"Início","nav.how":"Como funciona","nav.pricing":"Preços",
-  "nav.login":"Entrar","nav.signup":"Cadastrar","nav.logout":"Sair","nav.go_to_feed":"Ir para projetos",
+  "nav.login":"Entrar","nav.signup":"Cadastrar","nav.logout":"Sair","nav.go_to_feed":"Ir para projetos","nav.projects":"Projetos",
   "nav.start_project":"Iniciar um novo projeto",
   "footer.tagline":"Junte esforços, não feeds.","footer.contact":"Contato →","footer.terms":"Termos de uso",
   "common.back_to_feed":"← Voltar para projetos","common.back_to_home":"← Voltar ao início",
@@ -821,7 +824,8 @@ pt: {
   "hero.cta_primary":"Comece grátis","hero.cta_secondary":"Ver os projetos",
   "hero.note":"Grátis para começar · $2 por todas as ferramentas",
 
-  "feed.eyebrow":"Feed ao vivo","feed.heading":"O que as pessoas estão construindo agora.","feed.cta":"Ver todos os projetos →",
+  "feed.eyebrow":"Projetos ao vivo","feed.heading":"O que as pessoas estão construindo agora.","feed.cta":"Ver todos os projetos →",
+  "feed.posts_empty":"Ainda não há novidades — volte em breve.",
   "idea.eyebrow":"A ideia",
   "home.more_heading":"Quer ver tudo?","home.more_cta":"Saiba mais",
   "news.eyebrow":"Acontecendo agora","news.heading":"Projetos reais, em movimento agora.","news.empty":"Ainda não há projetos — seja o primeiro a começar um.",

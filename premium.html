@@ -22,7 +22,7 @@
 <header class="nav">
   <div class="nav-inner">
     <a class="brand" href="index.html"><img src="assets/logo.png" alt="Together"/></a>
-    <nav class="nav-links"><a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
+    <nav class="nav-links"><a href="projects.html" data-i18n="nav.projects">Projects</a> <a href="feed.html" data-i18n="nav.feed">Feed</a></nav>
     <div class="nav-auth" id="navAuth"></div>
     <span id="notifSlot"></span>
     <span id="langSlot"></span>
@@ -31,7 +31,7 @@
 
 <main class="auth-page">
   <div class="auth-card premium-card" id="premiumCard">
-    <a class="auth-back" href="feed.html" data-i18n="common.back_to_feed">← Back to feed</a>
+    <a class="auth-back" href="projects.html" data-i18n="common.back_to_feed">← Back to feed</a>
     <div class="loading-state"><span class="spinner" aria-hidden="true"></span><span data-i18n="common.loading">Loading…</span></div>
   </div>
 </main>
@@ -86,7 +86,7 @@ function renderNav(user){
 
 function renderLoggedOut(){
   card.innerHTML = `
-    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a>
     <h1>${t('premium.heading')}</h1>
     <p class="auth-sub">${t('premium.sub_login_first')}</p>
     <div class="hero-ctas" style="margin-top:6px;">
@@ -98,33 +98,33 @@ function renderLoggedOut(){
 
 function renderAlreadyPremium(){
   card.innerHTML = `
-    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a>
     <div class="premium-already">
       <h2 style="font-size:20px;margin-bottom:6px;">${t('premium.already_title')}</h2>
       <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.already_sub')}</p>
     </div>
     <div class="hero-ctas" style="margin-top:20px;">
-      <a class="btn btn-primary" href="feed.html">${t('premium.go_to_feed')}</a>
+      <a class="btn btn-primary" href="projects.html">${t('premium.go_to_feed')}</a>
     </div>
   `;
 }
 
 function renderPendingApproval(){
   card.innerHTML = `
-    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a>
     <div class="premium-already">
       <h2 style="font-size:20px;margin-bottom:6px;">⏳ ${t('premium.pending_title')}</h2>
       <p style="color:var(--ink-soft);font-size:14.5px;">${t('premium.pending_sub')}</p>
     </div>
     <div class="hero-ctas" style="margin-top:20px;">
-      <a class="btn btn-ghost" href="feed.html">${t('premium.go_to_feed')}</a>
+      <a class="btn btn-ghost" href="projects.html">${t('premium.go_to_feed')}</a>
     </div>
   `;
 }
 
 function renderPaymentForm(user){
   card.innerHTML = `
-    <a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a>
+    <a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a>
     <h1>${t('premium.heading')}</h1>
     <p class="auth-sub">${t('premium.sub')}</p>
     ${currentProfile && currentProfile.premium_status === 'denied' ? `<p class="form-msg error" style="margin-bottom:10px;">${t('premium.denied_note')}</p>` : ''}
@@ -197,7 +197,7 @@ async function init(){
   }
   let { data: profile, error } = await supabaseClient.from('profiles').select('is_premium, premium_status').eq('id', user.id).single();
   if (error){
-    card.innerHTML = `<a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
+    card.innerHTML = `<a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
     return;
   }
   if (checkoutResult){
@@ -211,7 +211,7 @@ async function init(){
     await new Promise(resolve => setTimeout(resolve, 2000));
     ({ data: profile, error } = await supabaseClient.from('profiles').select('is_premium, premium_status').eq('id', user.id).single());
     if (error){
-      card.innerHTML = `<a class="auth-back" href="feed.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
+      card.innerHTML = `<a class="auth-back" href="projects.html">${t('common.back_to_feed')}</a><p class="form-msg error">${t('project.load_error')} ${escapeHTML(error.message)}</p>`;
       return;
     }
   }

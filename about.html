@@ -24,6 +24,7 @@
   <div class="nav-inner">
     <a class="brand" href="index.html"><img src="assets/logo.png" alt="Together"/></a>
     <nav class="nav-links">
+      <a href="projects.html" data-i18n="nav.projects">Projects</a>
       <a href="feed.html" data-i18n="nav.feed">Feed</a>
       <a href="#how" data-i18n="nav.how">How it works</a>
       <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
@@ -47,7 +48,7 @@
         <p class="lede" data-i18n="hero.lede">Together is a place to turn an idea into a project. Pool money, time, and tools with people, companies, nonprofits, and government bodies who want to help build it — instead of just watching a feed.</p>
         <div class="hero-ctas">
           <a class="btn btn-primary" href="signup.html" data-i18n="hero.cta_primary">Get started free</a>
-          <a class="btn btn-ghost" href="feed.html" data-i18n="hero.cta_secondary">See the feed</a>
+          <a class="btn btn-ghost" href="projects.html" data-i18n="hero.cta_secondary">See the projects</a>
         </div>
         <p class="hero-note" data-i18n="hero.note">Free to start · $2 for the full toolkit</p>
       </div>
@@ -69,7 +70,7 @@
           <p class="eyebrow" data-i18n="feed.eyebrow">Live feed</p>
           <h2 data-i18n="feed.heading">What people are building right now.</h2>
         </div>
-        <a class="btn btn-primary" href="feed.html" data-i18n="feed.cta">Go to the feed →</a>
+        <a class="btn btn-primary" href="projects.html" data-i18n="feed.cta">Go to all projects →</a>
       </div>
       <div class="feed-grid">
         <article class="feed-card example">
@@ -268,7 +269,7 @@
         const name = session.user.user_metadata?.display_name || session.user.email.split('@')[0];
         document.getElementById('navAuth').innerHTML = `
           <span class="user-chip"><span class="avatar">${initials(name)}</span>${escapeHTML(name)}</span>
-          <a class="btn btn-primary" href="feed.html">${t('nav.go_to_feed')}</a>
+          <a class="btn btn-primary" href="projects.html">${t('nav.go_to_feed')}</a>
         `;
         initNotifications(session.user);
       }
