@@ -69,7 +69,7 @@ const navAuth = document.getElementById('navAuth');
 const content = document.getElementById('pageContent');
 
 const TAB_GROUPS = {
-  general: ['feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
+  general: ['overview', 'feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
   pm: ['schedule', 'wbs', 'team', 'costs'],
   se: ['requirements', 'usecases', 'architecture']
 };
@@ -83,11 +83,11 @@ function groupOfTab(tabId){
 let currentUser = null;
 let myCvUrl = null;
 let project = null;
-let activeTab = VALID_TABS.includes(params.get('tab')) ? params.get('tab') : 'feed';
+let activeTab = VALID_TABS.includes(params.get('tab')) ? params.get('tab') : 'overview';
 let activeGroup = groupOfTab(activeTab);
 // Remembers which sub-tab you were on last within each group, so switching
 // groups and back doesn't always reset to the group's first tab.
-let lastTabInGroup = { general: 'feed', pm: 'schedule', se: 'requirements', [activeGroup]: activeTab };
+let lastTabInGroup = { general: 'overview', pm: 'schedule', se: 'requirements', [activeGroup]: activeTab };
 let editingGoalId = null;
 let editingReqId = null;
 let editingTaskId = null;
@@ -230,7 +230,7 @@ async function loadProject(){
       project_goals(*),
       project_requirements(*),
       project_collaborators(id, user_id, status, cv_url, profiles(display_name, social_platform, social_url)),
-      project_supporters(user_id, amount),
+      project_supporters(user_id, amount, confirmed),
       project_tasks(*, task_assignees(user_id, profiles(display_name))),
       project_polls(*, poll_votes(user_id, option_index)),
       project_events(*, event_rsvps(user_id, status)),
@@ -387,6 +387,7 @@ function render(){
     <div class="tab-bar">
       ${TAB_GROUPS[activeGroup].map(tabId => `<button data-tab="${tabId}" class="${activeTab === tabId ? 'active' : ''}">${t('project.tab_' + tabId)}</button>`).join('')}
     </div>
+    <div class="tab-panel" data-panel="overview" ${activeTab !== 'overview' ? 'hidden' : ''}>${renderOverviewPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="feed" ${activeTab !== 'feed' ? 'hidden' : ''}>${renderFeedPanel()}</div>
     <div class="tab-panel" data-panel="goals" ${activeTab !== 'goals' ? 'hidden' : ''}>${renderGoalsPanel(isOwner)}</div>
     <div class="tab-panel" data-panel="requirements" ${activeTab !== 'requirements' ? 'hidden' : ''}>${renderRequirementsPanel(isOwner)}</div>
@@ -435,6 +436,100 @@ function renderLocked(myCollab){
   html += `<div style="text-align:center;margin-top:10px;"><a class="view-project-link" href="learn-more.html?id=${projectId}">${t('feed.learn_more')}</a></div>`;
   content.innerHTML = html;
   wireEvents();
+}
+
+// Landing tab for the team-only project page: a compact dashboard so the
+// team doesn't have to click into Goals/Costs/Feed just to see where
+// things stand. Pulls entirely from data loadProject() already fetched —
+// no extra queries.
+function renderOverviewPanel(isOwner){
+  const goals = project.project_goals || [];
+  const totalGoals = goals.length;
+  const completedGoals = goals.filter(g => g.progress >= 100).length;
+  const avgProgress = totalGoals ? Math.round(goals.reduce((sum, g) => sum + (g.progress || 0), 0) / totalGoals) : 0;
+
+  const supporters = project.project_supporters || [];
+  const totalRaised = supporters.filter(s => s.confirmed && s.amount != null).reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+  const totalSpent = (project.project_costs || []).reduce((sum, c) => sum + (Number(c.amount) || 0), 0);
+  const fundingTarget = Number(project.funding_target) || 0;
+  const fundingPct = fundingTarget > 0 ? Math.min(100, Math.round((totalRaised / fundingTarget) * 100)) : null;
+
+  const latestPosts = feedPosts.slice(0, 3);
+
+  let html = `
+    <div class="section-block">
+      <h2>${t('project.overview_goals_heading')}</h2>
+      <div class="stat-grid" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">${completedGoals}/${totalGoals}</div><div class="stat-label">${t('project.overview_goals_completed')}</div></div>
+        <div class="stat-card"><div class="stat-value">${avgProgress}%</div><div class="stat-label">${t('project.overview_avg_progress')}</div></div>
+      </div>
+  `;
+  if (totalGoals === 0){
+    html += `<p class="credits-note">${t('project.no_goals')}</p>`;
+  } else {
+    goals.slice(0, 4).forEach(g => {
+      html += `
+        <div class="goal-item">
+          <div class="goal-item-top"><h4>${escapeHTML(g.title)}</h4><span>${g.progress}%</span></div>
+          <div class="goal-bar"><div class="goal-bar-fill" style="width:${g.progress}%"></div></div>
+        </div>
+      `;
+    });
+  }
+  html += `<button class="btn btn-ghost btn-small" data-jump-tab="goals" type="button">${t('project.overview_manage_goals')}</button>`;
+  html += `</div>`;
+
+  html += `
+    <div class="section-block">
+      <h2>${t('project.overview_funds_heading')}</h2>
+      <div class="stat-grid" style="margin-bottom:14px;">
+        <div class="stat-card"><div class="stat-value">$${totalRaised.toFixed(2)}</div><div class="stat-label">${t('project.overview_raised')}</div></div>
+        <div class="stat-card"><div class="stat-value">$${totalSpent.toFixed(2)}</div><div class="stat-label">${t('project.overview_spent')}</div></div>
+      </div>
+  `;
+  if (fundingPct !== null){
+    html += `
+      <div class="goal-item">
+        <div class="goal-item-top"><h4>${t('project.overview_funding_goal')}</h4><span>$${totalRaised.toFixed(2)} / $${fundingTarget.toFixed(2)}</span></div>
+        <div class="goal-bar"><div class="goal-bar-fill" style="width:${fundingPct}%"></div></div>
+      </div>
+    `;
+  }
+  html += `
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button class="btn btn-ghost btn-small" data-jump-tab="costs" type="button">${t('project.overview_manage_costs')}</button>
+        <a class="btn btn-ghost btn-small" href="learn-more.html?id=${projectId}">${t('project.overview_view_public')}</a>
+      </div>
+    </div>
+  `;
+
+  html += `<div class="section-block"><h2>${t('project.overview_posts_heading')}</h2>`;
+  if (latestPosts.length === 0){
+    html += `<p class="credits-note">${t('project.feed_no_posts')}</p>`;
+  } else {
+    latestPosts.forEach(post => {
+      html += `
+        <article class="team-post">
+          <div class="team-post-meta">${t('project.feed_posted_by')} ${escapeHTML(post.user_name)} · ${escapeHTML((post.created_at || '').slice(0, 10))}</div>
+          ${post.image_url ? `<img src="${escapeHTML(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+          ${post.text ? `<p class="post-text">${escapeHTML(post.text)}</p>` : ''}
+        </article>
+      `;
+    });
+  }
+  html += `<button class="btn btn-ghost btn-small" data-jump-tab="feed" type="button">${t('project.overview_see_posts')}</button>`;
+  html += `</div>`;
+
+  return html;
+}
+
+// Lets an in-page button jump straight to another tab (possibly in a
+// different top-level group), the same way clicking the tab bar does.
+function jumpToTab(tabId){
+  activeTab = tabId;
+  activeGroup = groupOfTab(tabId);
+  lastTabInGroup[activeGroup] = tabId;
+  render();
 }
 
 function renderFeedPanel(){
@@ -1738,6 +1833,11 @@ function wireEvents(){
     lastTabInGroup[activeGroup] = activeTab;
     content.querySelectorAll('.tab-bar button').forEach(b => b.classList.toggle('active', b === btn));
     content.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== activeTab; });
+    maybeAutoFitActiveTab();
+  }));
+
+  content.querySelectorAll('[data-jump-tab]').forEach(btn => btn.addEventListener('click', () => {
+    jumpToTab(btn.dataset.jumpTab);
     maybeAutoFitActiveTab();
   }));
 
