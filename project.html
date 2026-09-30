@@ -70,7 +70,7 @@ const content = document.getElementById('pageContent');
 
 const TAB_GROUPS = {
   general: ['overview', 'feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
-  pm: ['schedule', 'wbs', 'team', 'costs'],
+  pm: ['schedule', 'wbs', 'team', 'costs', 'stakeholders', 'risks'],
   se: ['requirements', 'usecases', 'architecture']
 };
 const VALID_TABS = Object.values(TAB_GROUPS).flat();
@@ -97,6 +97,8 @@ let editingCostId = null;
 let editingActivityId = null;
 let editingWbsId = null;
 let editingLinkId = null;
+let editingStakeholderId = null;
+let editingRiskId = null;
 let ganttZoom = 1;
 let wbsZoom = 1;
 let ganttFitApplied = false;
@@ -240,7 +242,9 @@ async function loadProject(){
       project_wbs_items(*),
       project_links(*),
       project_ai_messages(*),
-      project_diagrams(type, data)`)
+      project_diagrams(type, data),
+      project_stakeholders(*),
+      project_risks(*, project_risk_mitigations(*))`)
     .eq('id', projectId)
     .single();
   if (error || !data){
@@ -398,6 +402,8 @@ function render(){
     <div class="tab-panel" data-panel="schedule" ${activeTab !== 'schedule' ? 'hidden' : ''}>${renderSchedulePanel()}</div>
     <div class="tab-panel" data-panel="wbs" ${activeTab !== 'wbs' ? 'hidden' : ''}>${renderWbsPanel()}</div>
     <div class="tab-panel" data-panel="team" ${activeTab !== 'team' ? 'hidden' : ''}>${renderTeamPanel(isOwner, approvedCollabs, pendingRequests, myCollab)}</div>
+    <div class="tab-panel" data-panel="stakeholders" ${activeTab !== 'stakeholders' ? 'hidden' : ''}>${renderStakeholdersPanel()}</div>
+    <div class="tab-panel" data-panel="risks" ${activeTab !== 'risks' ? 'hidden' : ''}>${renderRisksPanel()}</div>
     <div class="tab-panel" data-panel="links" ${activeTab !== 'links' ? 'hidden' : ''}>${renderLinksPanel()}</div>
     <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
     <div class="tab-panel" data-panel="usecases" ${activeTab !== 'usecases' ? 'hidden' : ''}>${renderDiagramPanel('usecases')}</div>
@@ -735,6 +741,280 @@ function renderCostsPanel(){
           <label>${t('project.cost_category')}<input type="text" name="category" maxlength="60" value="${editingCost ? escapeHTML(editingCost.category || '') : ''}"></label>
           <button class="btn btn-ghost btn-small" type="submit">${editingCostId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="costMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+// ---------------------------------------------------------------------------
+// Shared 1-5 x 1-5 scatter chart used by both the stakeholder power/interest
+// matrix and the risk likelihood/severity matrix. Purely derived from
+// whatever rows are passed in — there's no chart state to keep in sync, so
+// it "updates automatically" simply by being rebuilt on every render().
+// ---------------------------------------------------------------------------
+function renderScatterMatrix(points, opts){
+  const axisMax = opts.axisMax || 5;
+  const size = 320;
+  const pad = 30;
+  const plotSize = size - pad;
+  const cell = plotSize / axisMax;
+
+  let cellsHtml = '';
+  for (let xi = 1; xi <= axisMax; xi++){
+    for (let yi = 1; yi <= axisMax; yi++){
+      const x0 = pad + (xi - 1) * cell;
+      const y0 = plotSize - yi * cell;
+      cellsHtml += `<rect x="${x0}" y="${y0}" width="${cell}" height="${cell}" fill="${opts.cellColor(xi, yi)}"></rect>`;
+    }
+  }
+
+  let ticksHtml = '';
+  for (let i = 1; i <= axisMax; i++){
+    const tx = pad + (i - 0.5) * cell;
+    const ty = plotSize - (i - 0.5) * cell;
+    ticksHtml += `<text x="${tx}" y="${plotSize + 14}" text-anchor="middle" class="matrix-tick">${i}</text>`;
+    ticksHtml += `<text x="${pad - 8}" y="${ty + 3}" text-anchor="end" class="matrix-tick">${i}</text>`;
+  }
+
+  // Points sharing the same (x,y) cell are spread in a small ring instead
+  // of stacking exactly on top of each other, so no data point is hidden.
+  const groups = new Map();
+  points.forEach(p => {
+    const key = p.x + ',' + p.y;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  });
+  let dotsHtml = '';
+  groups.forEach(group => {
+    const gx = group[0].x, gy = group[0].y;
+    const cx0 = pad + (gx - 0.5) * cell;
+    const cy0 = plotSize - (gy - 0.5) * cell;
+    const n = group.length;
+    group.forEach((p, i) => {
+      let dx = 0, dy = 0;
+      if (n > 1){
+        const angle = (2 * Math.PI * i) / n - Math.PI / 2;
+        const r = Math.min(cell * 0.26, 13);
+        dx = Math.cos(angle) * r; dy = Math.sin(angle) * r;
+      }
+      const cx = (cx0 + dx).toFixed(1), cy = (cy0 + dy).toFixed(1);
+      const label = p.label.length > 14 ? p.label.slice(0, 13) + '…' : p.label;
+      dotsHtml += `
+        <circle cx="${cx}" cy="${cy}" r="7" class="matrix-dot"></circle>
+        <text x="${cx}" y="${(cy - 11)}" text-anchor="middle" class="matrix-dot-label">${escapeHTML(label)}</text>
+      `;
+    });
+  });
+
+  let midLinesHtml = '';
+  if (opts.midLines){
+    const mid = plotSize / 2;
+    midLinesHtml = `
+      <line x1="${pad + mid}" y1="0" x2="${pad + mid}" y2="${plotSize}" class="matrix-mid-line"></line>
+      <line x1="${pad}" y1="${mid}" x2="${size}" y2="${mid}" class="matrix-mid-line"></line>
+    `;
+  }
+
+  let quadrantHtml = '';
+  (opts.quadrantLabels || []).forEach(q => {
+    const qx = pad + q.xFrac * plotSize;
+    const qy = plotSize - q.yFrac * plotSize;
+    quadrantHtml += `<text x="${qx}" y="${qy}" text-anchor="middle" class="matrix-quadrant-label">${escapeHTML(q.text)}</text>`;
+  });
+
+  return `
+    <div class="matrix-wrap">
+      <div class="matrix-caption">↑ ${escapeHTML(opts.yAxisLabel)} &nbsp;·&nbsp; ${escapeHTML(opts.xAxisLabel)} →</div>
+      <svg viewBox="0 0 ${size} ${plotSize + 26}" class="matrix-svg">
+        ${cellsHtml}
+        ${midLinesHtml}
+        ${quadrantHtml}
+        ${dotsHtml}
+        ${ticksHtml}
+      </svg>
+    </div>
+  `;
+}
+
+const STAKEHOLDER_QUADRANTS = [
+  { textKey: 'project.matrix_manage_closely', xFrac: 0.75, yFrac: 0.88 },
+  { textKey: 'project.matrix_keep_satisfied', xFrac: 0.25, yFrac: 0.88 },
+  { textKey: 'project.matrix_keep_informed', xFrac: 0.75, yFrac: 0.12 },
+  { textKey: 'project.matrix_monitor', xFrac: 0.25, yFrac: 0.12 }
+];
+function stakeholderCellColor(interest, power){
+  const hiPower = power >= 3, hiInterest = interest >= 3;
+  if (hiPower && hiInterest) return '#FFF1E7';
+  if (hiPower && !hiInterest) return '#EAF3FB';
+  if (!hiPower && hiInterest) return '#EAF7EE';
+  return '#EEF4F8';
+}
+
+function renderStakeholdersPanel(){
+  const stakeholders = (project.project_stakeholders || []).slice()
+    .sort((a, b) => (b.power * b.interest) - (a.power * a.interest));
+
+  let html = `<h3 style="font-size:15.5px;margin-bottom:10px;">${t('project.stakeholder_matrix_heading')}</h3>`;
+  if (stakeholders.length === 0){
+    html += `<p class="credits-note" style="margin-bottom:20px;">${t('project.no_stakeholders')}</p>`;
+  } else {
+    html += renderScatterMatrix(
+      stakeholders.map(s => ({ x: s.interest, y: s.power, label: s.name })),
+      {
+        xAxisLabel: t('project.stakeholder_interest'), yAxisLabel: t('project.stakeholder_power'),
+        cellColor: stakeholderCellColor, midLines: true,
+        quadrantLabels: STAKEHOLDER_QUADRANTS.map(q => ({ text: t(q.textKey), xFrac: q.xFrac, yFrac: q.yFrac }))
+      }
+    );
+  }
+
+  stakeholders.forEach(s => {
+    html += `
+      <div class="goal-item">
+        <div class="goal-item-top">
+          <h4>${escapeHTML(s.name)}${s.role ? ` <span class="credits-note" style="font-weight:400;">· ${escapeHTML(s.role)}</span>` : ''}</h4>
+          <span>${t('project.stakeholder_power')} ${s.power} · ${t('project.stakeholder_interest')} ${s.interest}</span>
+        </div>
+        ${s.notes ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">${escapeHTML(s.notes)}</p>` : ''}
+        <div class="item-actions">
+          <button class="icon-btn" data-edit-stakeholder="${s.id}">${t('common.edit')}</button>
+          <button class="icon-btn" data-delete-stakeholder="${s.id}">${t('common.delete')}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  if (currentUser){
+    const editing = editingStakeholderId ? stakeholders.find(s => s.id === editingStakeholderId) : null;
+    html += `
+      <details class="add-inline" ${editingStakeholderId ? 'open' : ''} style="margin-top:16px;">
+        <summary>${editingStakeholderId ? t('common.edit') : t('project.add_stakeholder')}</summary>
+        <form id="stakeholderForm" class="auth-form" data-editing="${editingStakeholderId || ''}">
+          <label>${t('project.stakeholder_name')}<input type="text" required name="name" maxlength="80" value="${editing ? escapeHTML(editing.name) : ''}"></label>
+          <label>${t('project.stakeholder_role')}<input type="text" name="role" maxlength="80" value="${editing ? escapeHTML(editing.role || '') : ''}"></label>
+          <label>${t('project.stakeholder_power')}<input type="number" required name="power" min="1" max="5" value="${editing ? editing.power : 3}"></label>
+          <label>${t('project.stakeholder_interest')}<input type="number" required name="interest" min="1" max="5" value="${editing ? editing.interest : 3}"></label>
+          <label>${t('project.stakeholder_notes')}<textarea name="notes" rows="2" maxlength="300">${editing ? escapeHTML(editing.notes || '') : ''}</textarea></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingStakeholderId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="stakeholderMsg"></p>
+        </form>
+      </details>
+    `;
+  }
+  return html;
+}
+
+function riskEvBefore(r){ return (Number(r.probability_pct) / 100) * Number(r.impact_cost); }
+function riskEvAfter(r){
+  const prob = r.residual_probability_pct != null ? Number(r.residual_probability_pct) : Number(r.probability_pct);
+  const impact = r.residual_impact_cost != null ? Number(r.residual_impact_cost) : Number(r.impact_cost);
+  return (prob / 100) * impact;
+}
+function riskWorstBefore(r){ return Number(r.impact_cost); }
+function riskWorstAfter(r){ return r.residual_impact_cost != null ? Number(r.residual_impact_cost) : Number(r.impact_cost); }
+function riskBand(score){ return score >= 15 ? 'high' : score >= 7 ? 'medium' : 'low'; }
+function riskCellColor(likelihood, severity){
+  const band = riskBand(likelihood * severity);
+  return band === 'high' ? '#FBEAEA' : band === 'medium' ? '#FFF1E7' : '#EAF7EE';
+}
+
+function renderRisksPanel(){
+  const risks = (project.project_risks || []).slice()
+    .sort((a, b) => (b.likelihood * b.severity) - (a.likelihood * a.severity));
+
+  let html = `<h3 style="font-size:15.5px;margin-bottom:10px;">${t('project.risk_matrix_heading')}</h3>`;
+  if (risks.length === 0){
+    html += `<p class="credits-note" style="margin-bottom:20px;">${t('project.no_risks')}</p>`;
+  } else {
+    html += renderScatterMatrix(
+      risks.map(r => ({ x: r.likelihood, y: r.severity, label: r.title })),
+      { xAxisLabel: t('project.risk_likelihood'), yAxisLabel: t('project.risk_severity'), cellColor: riskCellColor }
+    );
+    html += `
+      <div class="risk-legend">
+        <span class="risk-badge low">${t('project.risk_band_low')}</span>
+        <span class="risk-badge medium">${t('project.risk_band_medium')}</span>
+        <span class="risk-badge high">${t('project.risk_band_high')}</span>
+      </div>
+    `;
+  }
+
+  if (risks.length > 0){
+    const totalEvBefore = risks.reduce((sum, r) => sum + riskEvBefore(r), 0);
+    const totalEvAfter = risks.reduce((sum, r) => sum + riskEvAfter(r), 0);
+    const totalWorstBefore = risks.reduce((sum, r) => sum + riskWorstBefore(r), 0);
+    const totalWorstAfter = risks.reduce((sum, r) => sum + riskWorstAfter(r), 0);
+    const totalMitigationCost = risks.reduce((sum, r) => sum + (r.project_risk_mitigations || []).reduce((ms, m) => ms + (Number(m.cost) || 0), 0), 0);
+    html += `
+      <h3 style="font-size:15.5px;margin:22px 0 10px;">${t('project.risk_quant_heading')}</h3>
+      <div class="stat-grid" style="margin-bottom:20px;">
+        <div class="stat-card"><div class="stat-value">$${totalEvBefore.toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_before')}</div></div>
+        <div class="stat-card"><div class="stat-value">$${totalEvAfter.toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_after')}</div></div>
+        <div class="stat-card"><div class="stat-value">$${totalWorstBefore.toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_before')}</div></div>
+        <div class="stat-card"><div class="stat-value">$${totalWorstAfter.toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_after')}</div></div>
+        <div class="stat-card"><div class="stat-value">$${totalMitigationCost.toFixed(2)}</div><div class="stat-label">${t('project.risk_total_mitigation_cost')}</div></div>
+      </div>
+    `;
+  }
+
+  risks.forEach(r => {
+    const band = riskBand(r.likelihood * r.severity);
+    const mitigations = r.project_risk_mitigations || [];
+    html += `
+      <div class="goal-item">
+        <div class="goal-item-top">
+          <h4>${escapeHTML(r.title)}</h4>
+          <span class="risk-badge ${band}">${r.likelihood}×${r.severity} = ${r.likelihood * r.severity}</span>
+        </div>
+        ${r.description ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">${escapeHTML(r.description)}</p>` : ''}
+        <div class="stat-grid" style="margin-bottom:10px;">
+          <div class="stat-card"><div class="stat-value">$${riskEvBefore(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_before')}</div></div>
+          <div class="stat-card"><div class="stat-value">$${riskEvAfter(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_after')}</div></div>
+          <div class="stat-card"><div class="stat-value">$${riskWorstBefore(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_before')}</div></div>
+          <div class="stat-card"><div class="stat-value">$${riskWorstAfter(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_after')}</div></div>
+        </div>
+
+        <p class="credits-note" style="margin-bottom:6px;">${t('project.risk_mitigations_heading')} (${mitigations.length})</p>
+        ${mitigations.map(m => `
+          <div class="mitigation-row">
+            <span>${escapeHTML(m.description)}${m.cost != null ? ` — $${Number(m.cost).toFixed(2)}` : ''}</span>
+            <button class="icon-btn" data-delete-mitigation="${m.id}">${t('common.delete')}</button>
+          </div>
+        `).join('')}
+        ${currentUser ? `
+          <form class="mitigation-add-row" data-risk-id="${r.id}">
+            <input type="text" name="description" placeholder="${t('project.mitigation_desc')}" required maxlength="200">
+            <input type="number" name="cost" placeholder="${t('project.mitigation_cost')}" min="0" step="0.01">
+            <button class="btn btn-ghost btn-small" type="submit">${t('common.add')}</button>
+          </form>
+        ` : ''}
+
+        <div class="item-actions" style="margin-top:10px;">
+          <button class="icon-btn" data-edit-risk="${r.id}">${t('common.edit')}</button>
+          <button class="icon-btn" data-delete-risk="${r.id}">${t('common.delete')}</button>
+        </div>
+      </div>
+    `;
+  });
+
+  if (currentUser){
+    const editing = editingRiskId ? risks.find(r => r.id === editingRiskId) : null;
+    html += `
+      <details class="add-inline" ${editingRiskId ? 'open' : ''} style="margin-top:16px;">
+        <summary>${editingRiskId ? t('common.edit') : t('project.add_risk')}</summary>
+        <form id="riskForm" class="auth-form" data-editing="${editingRiskId || ''}">
+          <label>${t('project.risk_title')}<input type="text" required name="title" maxlength="120" value="${editing ? escapeHTML(editing.title) : ''}"></label>
+          <label>${t('project.risk_desc')}<textarea name="description" rows="2" maxlength="400">${editing ? escapeHTML(editing.description || '') : ''}</textarea></label>
+          <label>${t('project.risk_likelihood')}<input type="number" required name="likelihood" min="1" max="5" value="${editing ? editing.likelihood : 3}"></label>
+          <label>${t('project.risk_severity')}<input type="number" required name="severity" min="1" max="5" value="${editing ? editing.severity : 3}"></label>
+          <label>${t('project.risk_probability')}<input type="number" required name="probability_pct" min="0" max="100" step="1" value="${editing ? editing.probability_pct : 0}"></label>
+          <label>${t('project.risk_impact_cost')}<input type="number" required name="impact_cost" min="0" step="0.01" value="${editing ? editing.impact_cost : 0}"></label>
+          <label>${t('project.risk_residual_probability')}<input type="number" name="residual_probability_pct" min="0" max="100" step="1" value="${editing && editing.residual_probability_pct != null ? editing.residual_probability_pct : ''}"></label>
+          <label>${t('project.risk_residual_impact')}<input type="number" name="residual_impact_cost" min="0" step="0.01" value="${editing && editing.residual_impact_cost != null ? editing.residual_impact_cost : ''}"></label>
+          <button class="btn btn-ghost btn-small" type="submit">${editingRiskId ? t('common.save') : t('common.add')}</button>
+          <p class="form-msg" id="riskMsg"></p>
         </form>
       </details>
     `;
@@ -2203,6 +2483,98 @@ function wireEvents(){
   }));
   content.querySelectorAll('[data-delete-cost]').forEach(btn => btn.addEventListener('click', async () => {
     await supabaseClient.from('project_costs').delete().eq('id', btn.dataset.deleteCost);
+    loadProject();
+  }));
+
+  // --- Stakeholders ---
+  const stakeholderForm = document.getElementById('stakeholderForm');
+  if (stakeholderForm) stakeholderForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('stakeholderMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const payload = {
+      name: (fd.get('name') || '').trim(),
+      role: (fd.get('role') || '').trim() || null,
+      power: Number(fd.get('power')),
+      interest: Number(fd.get('interest')),
+      notes: (fd.get('notes') || '').trim() || null
+    };
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_stakeholders').update(payload).eq('id', editingId));
+    } else {
+      ({ error } = await supabaseClient.from('project_stakeholders').insert({ project_id: projectId, ...payload, created_by: currentUser.id }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingStakeholderId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-stakeholder]').forEach(btn => btn.addEventListener('click', () => {
+    editingStakeholderId = btn.dataset.editStakeholder;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-stakeholder]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_stakeholders').delete().eq('id', btn.dataset.deleteStakeholder);
+    loadProject();
+  }));
+
+  // --- Risks ---
+  const riskForm = document.getElementById('riskForm');
+  if (riskForm) riskForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('riskMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const fd = new FormData(e.target);
+    const residualProb = fd.get('residual_probability_pct');
+    const residualImpact = fd.get('residual_impact_cost');
+    const payload = {
+      title: (fd.get('title') || '').trim(),
+      description: (fd.get('description') || '').trim() || null,
+      likelihood: Number(fd.get('likelihood')),
+      severity: Number(fd.get('severity')),
+      probability_pct: Number(fd.get('probability_pct')),
+      impact_cost: Number(fd.get('impact_cost')),
+      residual_probability_pct: residualProb === '' ? null : Number(residualProb),
+      residual_impact_cost: residualImpact === '' ? null : Number(residualImpact)
+    };
+    const editingId = e.target.dataset.editing;
+    let error;
+    if (editingId){
+      ({ error } = await supabaseClient.from('project_risks').update(payload).eq('id', editingId));
+    } else {
+      const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+      ({ error } = await supabaseClient.from('project_risks').insert({ project_id: projectId, ...payload, created_by: currentUser.id, created_by_name: userName }));
+    }
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    editingRiskId = null;
+    loadProject();
+  });
+  content.querySelectorAll('[data-edit-risk]').forEach(btn => btn.addEventListener('click', () => {
+    editingRiskId = btn.dataset.editRisk;
+    render();
+  }));
+  content.querySelectorAll('[data-delete-risk]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_risks').delete().eq('id', btn.dataset.deleteRisk);
+    loadProject();
+  }));
+
+  content.querySelectorAll('.mitigation-add-row').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const description = (fd.get('description') || '').trim();
+    if (!description) return;
+    const cost = fd.get('cost');
+    const userName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+    await supabaseClient.from('project_risk_mitigations').insert({
+      project_id: projectId, risk_id: e.target.dataset.riskId, description,
+      cost: cost === '' ? null : Number(cost), created_by: currentUser.id, created_by_name: userName
+    });
+    loadProject();
+  }));
+  content.querySelectorAll('[data-delete-mitigation]').forEach(btn => btn.addEventListener('click', async () => {
+    await supabaseClient.from('project_risk_mitigations').delete().eq('id', btn.dataset.deleteMitigation);
     loadProject();
   }));
 

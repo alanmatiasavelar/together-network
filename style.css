@@ -577,6 +577,35 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 .cost-row .cost-meta{font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
 .cost-row .cost-amount{font-family:'Space Grotesk';font-weight:700;font-size:15px;white-space:nowrap;}
 
+/* ---------- Stakeholder power/interest & risk likelihood/severity matrices ---------- */
+.matrix-wrap{max-width:380px;margin:0 auto 18px;}
+.matrix-caption{text-align:center;font-size:12px;color:var(--ink-soft);margin-bottom:8px;}
+.matrix-svg{width:100%;height:auto;display:block;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--panel);}
+.matrix-tick{font-family:'IBM Plex Mono',monospace;font-size:9px;fill:var(--ink-soft);}
+.matrix-dot{fill:var(--blue-deep);stroke:#fff;stroke-width:1.5;}
+.matrix-dot-label{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:9.5px;fill:var(--ink);pointer-events:none;}
+.matrix-quadrant-label{font-family:'IBM Plex Mono',monospace;font-size:9px;fill:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em;}
+.matrix-mid-line{stroke:var(--line);stroke-width:1;stroke-dasharray:3,3;}
+
+.risk-legend{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:20px;}
+.risk-badge{
+  font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;padding:4px 10px;border-radius:100px;
+  white-space:nowrap;border:1px solid transparent;
+}
+.risk-badge.low{background:#EAF7EE;border-color:#BFE8CE;color:#1F7A46;}
+.risk-badge.medium{background:#FFF1E7;border-color:#F3D2B8;color:var(--orange-deep);}
+.risk-badge.high{background:#FBEAEA;border-color:#F0C6C3;color:#B23B3B;}
+
+.mitigation-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  font-size:13px;padding:8px 0;border-bottom:1px dashed var(--line);
+}
+.mitigation-row:last-of-type{border-bottom:none;}
+.mitigation-add-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;}
+.mitigation-add-row input[type="text"]{flex:2;min-width:140px;}
+.mitigation-add-row input[type="number"]{flex:1;min-width:90px;}
+.mitigation-add-row input{font-size:13px;padding:7px 10px;border-radius:8px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);font-family:inherit;}
+
 /* ---------- Task detail page ---------- */
 .status-timeline{border-left:2px solid var(--line);margin-left:6px;padding-left:20px;}
 .timeline-item{position:relative;padding-bottom:20px;}

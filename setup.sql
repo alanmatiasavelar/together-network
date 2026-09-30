@@ -2107,3 +2107,114 @@ create policy "Users can like a post" on project_post_likes
 drop policy if exists "Users can unlike their own like" on project_post_likes;
 create policy "Users can unlike their own like" on project_post_likes
   for delete using (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- STAKEHOLDERS: power/interest is a 1-5 scale set directly by the team, not
+-- a computed field. Priority ordering in the UI (and matrix quadrant) is
+-- derived client-side from power*interest — there's no separate sort_order
+-- column, since "order by power and interest" means rank by those values,
+-- not a manual drag order.
+-- ---------------------------------------------------------------------------
+create table if not exists project_stakeholders (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  name text not null,
+  role text,
+  power smallint not null check (power between 1 and 5),
+  interest smallint not null check (interest between 1 and 5),
+  notes text,
+  created_by uuid not null default auth.uid(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_stakeholders_project_id_idx on project_stakeholders (project_id);
+
+alter table project_stakeholders enable row level security;
+
+drop policy if exists "Team can read stakeholders" on project_stakeholders;
+create policy "Team can read stakeholders" on project_stakeholders
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add stakeholders" on project_stakeholders;
+create policy "Team can add stakeholders" on project_stakeholders
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update stakeholders" on project_stakeholders;
+create policy "Team can update stakeholders" on project_stakeholders
+  for update using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete stakeholders" on project_stakeholders;
+create policy "Team can delete stakeholders" on project_stakeholders
+  for delete using (public.is_project_team_member(project_id));
+
+-- ---------------------------------------------------------------------------
+-- RISKS: likelihood/severity (1-5 each) drive the qualitative matrix.
+-- probability_pct/impact_cost are the pre-mitigation quantitative inputs;
+-- residual_probability_pct/residual_impact_cost are the same numbers
+-- re-estimated after mitigations are applied (left null until the team sets
+-- them, in which case the "after" analysis just falls back to "before").
+-- Mitigations are a separate linked table — user-entered actions, each
+-- with an optional implementation cost, rolled up into a total.
+-- ---------------------------------------------------------------------------
+create table if not exists project_risks (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects(id) on delete cascade,
+  title text not null,
+  description text,
+  likelihood smallint not null check (likelihood between 1 and 5),
+  severity smallint not null check (severity between 1 and 5),
+  probability_pct numeric not null default 0 check (probability_pct between 0 and 100),
+  impact_cost numeric not null default 0 check (impact_cost >= 0),
+  residual_probability_pct numeric check (residual_probability_pct between 0 and 100),
+  residual_impact_cost numeric check (residual_impact_cost >= 0),
+  created_by uuid not null default auth.uid(),
+  created_by_name text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_risks_project_id_idx on project_risks (project_id);
+
+alter table project_risks enable row level security;
+
+drop policy if exists "Team can read risks" on project_risks;
+create policy "Team can read risks" on project_risks
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add risks" on project_risks;
+create policy "Team can add risks" on project_risks
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can update risks" on project_risks;
+create policy "Team can update risks" on project_risks
+  for update using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete risks" on project_risks;
+create policy "Team can delete risks" on project_risks
+  for delete using (public.is_project_team_member(project_id));
+
+create table if not exists project_risk_mitigations (
+  id uuid primary key default gen_random_uuid(),
+  risk_id uuid not null references project_risks(id) on delete cascade,
+  project_id uuid not null references projects(id) on delete cascade,
+  description text not null,
+  cost numeric check (cost >= 0),
+  created_by uuid not null default auth.uid(),
+  created_by_name text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists project_risk_mitigations_risk_id_idx on project_risk_mitigations (risk_id);
+
+alter table project_risk_mitigations enable row level security;
+
+drop policy if exists "Team can read mitigations" on project_risk_mitigations;
+create policy "Team can read mitigations" on project_risk_mitigations
+  for select using (public.is_project_team_member(project_id));
+
+drop policy if exists "Team can add mitigations" on project_risk_mitigations;
+create policy "Team can add mitigations" on project_risk_mitigations
+  for insert with check (auth.uid() = created_by and public.is_project_team_member(project_id));
+
+drop policy if exists "Team can delete mitigations" on project_risk_mitigations;
+create policy "Team can delete mitigations" on project_risk_mitigations
+  for delete using (public.is_project_team_member(project_id));
