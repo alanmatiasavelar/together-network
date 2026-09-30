@@ -919,6 +919,30 @@ function riskCellColor(likelihood, severity){
   const band = riskBand(likelihood * severity);
   return band === 'high' ? '#FBEAEA' : band === 'medium' ? '#FFF1E7' : '#EAF7EE';
 }
+// impact_cost holds either a dollar amount or a day count depending on
+// impact_unit — dollars and days can never be summed together, so every
+// place that totals risk exposure has to group by unit first.
+function formatRiskImpact(value, unit){
+  return unit === 'time' ? `${Number(value).toFixed(1)} ${t('project.risk_days_suffix')}` : `$${Number(value).toFixed(2)}`;
+}
+function riskQuantStatsHTML(risks, showAfter){
+  const totalEvBefore = risks.reduce((sum, r) => sum + riskEvBefore(r), 0);
+  const totalWorstBefore = risks.reduce((sum, r) => sum + riskWorstBefore(r), 0);
+  const unit = risks[0].impact_unit;
+  let html = `
+    <div class="stat-card"><div class="stat-value">${formatRiskImpact(totalEvBefore, unit)}</div><div class="stat-label">${t(showAfter ? 'project.risk_ev_before' : 'project.risk_ev_heading_simple')}</div></div>
+  `;
+  if (showAfter){
+    const totalEvAfter = risks.reduce((sum, r) => sum + riskEvAfter(r), 0);
+    html += `<div class="stat-card"><div class="stat-value">${formatRiskImpact(totalEvAfter, unit)}</div><div class="stat-label">${t('project.risk_ev_after')}</div></div>`;
+  }
+  html += `<div class="stat-card"><div class="stat-value">${formatRiskImpact(totalWorstBefore, unit)}</div><div class="stat-label">${t(showAfter ? 'project.risk_worst_before' : 'project.risk_worst_heading_simple')}</div></div>`;
+  if (showAfter){
+    const totalWorstAfter = risks.reduce((sum, r) => sum + riskWorstAfter(r), 0);
+    html += `<div class="stat-card"><div class="stat-value">${formatRiskImpact(totalWorstAfter, unit)}</div><div class="stat-label">${t('project.risk_worst_after')}</div></div>`;
+  }
+  return html;
+}
 
 function renderRisksPanel(){
   const risks = (project.project_risks || []).slice()
@@ -942,21 +966,14 @@ function renderRisksPanel(){
   }
 
   if (risks.length > 0){
-    const totalEvBefore = risks.reduce((sum, r) => sum + riskEvBefore(r), 0);
-    const totalEvAfter = risks.reduce((sum, r) => sum + riskEvAfter(r), 0);
-    const totalWorstBefore = risks.reduce((sum, r) => sum + riskWorstBefore(r), 0);
-    const totalWorstAfter = risks.reduce((sum, r) => sum + riskWorstAfter(r), 0);
+    const costRisks = risks.filter(r => r.impact_unit !== 'time');
+    const timeRisks = risks.filter(r => r.impact_unit === 'time');
     const totalMitigationCost = risks.reduce((sum, r) => sum + (r.project_risk_mitigations || []).reduce((ms, m) => ms + (Number(m.cost) || 0), 0), 0);
-    html += `
-      <h3 style="font-size:15.5px;margin:22px 0 10px;">${t('project.risk_quant_heading')}</h3>
-      <div class="stat-grid" style="margin-bottom:20px;">
-        <div class="stat-card"><div class="stat-value">$${totalEvBefore.toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_before')}</div></div>
-        <div class="stat-card"><div class="stat-value">$${totalEvAfter.toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_after')}</div></div>
-        <div class="stat-card"><div class="stat-value">$${totalWorstBefore.toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_before')}</div></div>
-        <div class="stat-card"><div class="stat-value">$${totalWorstAfter.toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_after')}</div></div>
-        <div class="stat-card"><div class="stat-value">$${totalMitigationCost.toFixed(2)}</div><div class="stat-label">${t('project.risk_total_mitigation_cost')}</div></div>
-      </div>
-    `;
+    html += `<h3 style="font-size:15.5px;margin:22px 0 10px;">${t('project.risk_quant_heading')}</h3><div class="stat-grid" style="margin-bottom:20px;">`;
+    if (costRisks.length) html += riskQuantStatsHTML(costRisks, true);
+    if (timeRisks.length) html += riskQuantStatsHTML(timeRisks, true);
+    html += `<div class="stat-card"><div class="stat-value">$${totalMitigationCost.toFixed(2)}</div><div class="stat-label">${t('project.risk_total_mitigation_cost')}</div></div>`;
+    html += `</div>`;
   }
 
   risks.forEach(r => {
@@ -969,26 +986,23 @@ function renderRisksPanel(){
           <span class="risk-badge ${band}">${r.likelihood}×${r.severity} = ${r.likelihood * r.severity}</span>
         </div>
         ${r.description ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;">${escapeHTML(r.description)}</p>` : ''}
-        <div class="stat-grid" style="margin-bottom:10px;">
-          <div class="stat-card"><div class="stat-value">$${riskEvBefore(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_before')}</div></div>
-          <div class="stat-card"><div class="stat-value">$${riskEvAfter(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_ev_after')}</div></div>
-          <div class="stat-card"><div class="stat-value">$${riskWorstBefore(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_before')}</div></div>
-          <div class="stat-card"><div class="stat-value">$${riskWorstAfter(r).toFixed(2)}</div><div class="stat-label">${t('project.risk_worst_after')}</div></div>
-        </div>
-
-        <p class="credits-note" style="margin-bottom:6px;">${t('project.risk_mitigations_heading')} (${mitigations.length})</p>
-        ${mitigations.map(m => `
-          <div class="mitigation-row">
-            <span>${escapeHTML(m.description)}${m.cost != null ? ` — $${Number(m.cost).toFixed(2)}` : ''}</span>
-            <button class="icon-btn" data-delete-mitigation="${m.id}">${t('common.delete')}</button>
-          </div>
-        `).join('')}
-        ${currentUser ? `
-          <form class="mitigation-add-row" data-risk-id="${r.id}">
-            <input type="text" name="description" placeholder="${t('project.mitigation_desc')}" required maxlength="200">
-            <input type="number" name="cost" placeholder="${t('project.mitigation_cost')}" min="0" step="0.01">
-            <button class="btn btn-ghost btn-small" type="submit">${t('common.add')}</button>
-          </form>
+        <div class="stat-grid" style="margin-bottom:10px;">${riskQuantStatsHTML([r], r.is_mitigated)}</div>
+        ${r.is_mitigated ? `
+          ${r.mitigation_strategy ? `<p style="font-size:13px;color:var(--ink-soft);margin-bottom:8px;"><strong>${t('project.risk_mitigation_strategy')}:</strong> ${escapeHTML(r.mitigation_strategy)}</p>` : ''}
+          <p class="credits-note" style="margin-bottom:6px;">${t('project.risk_mitigations_heading')} (${mitigations.length})</p>
+          ${mitigations.map(m => `
+            <div class="mitigation-row">
+              <span>${escapeHTML(m.description)}${m.cost != null ? ` — $${Number(m.cost).toFixed(2)}` : ''}</span>
+              <button class="icon-btn" data-delete-mitigation="${m.id}">${t('common.delete')}</button>
+            </div>
+          `).join('')}
+          ${currentUser ? `
+            <form class="mitigation-add-row" data-risk-id="${r.id}">
+              <input type="text" name="description" placeholder="${t('project.mitigation_desc')}" required maxlength="200">
+              <input type="number" name="cost" placeholder="${t('project.mitigation_cost')}" min="0" step="0.01">
+              <button class="btn btn-ghost btn-small" type="submit">${t('common.add')}</button>
+            </form>
+          ` : ''}
         ` : ''}
 
         <div class="item-actions" style="margin-top:10px;">
@@ -1001,6 +1015,7 @@ function renderRisksPanel(){
 
   if (currentUser){
     const editing = editingRiskId ? risks.find(r => r.id === editingRiskId) : null;
+    const isMitigated = editing ? editing.is_mitigated : false;
     html += `
       <details class="add-inline" ${editingRiskId ? 'open' : ''} style="margin-top:16px;">
         <summary>${editingRiskId ? t('common.edit') : t('project.add_risk')}</summary>
@@ -1010,9 +1025,22 @@ function renderRisksPanel(){
           <label>${t('project.risk_likelihood')}<input type="number" required name="likelihood" min="1" max="5" value="${editing ? editing.likelihood : 3}"></label>
           <label>${t('project.risk_severity')}<input type="number" required name="severity" min="1" max="5" value="${editing ? editing.severity : 3}"></label>
           <label>${t('project.risk_probability')}<input type="number" required name="probability_pct" min="0" max="100" step="1" value="${editing ? editing.probability_pct : 0}"></label>
+          <label>${t('project.risk_impact_unit')}
+            <select name="impact_unit">
+              <option value="cost" ${(!editing || editing.impact_unit !== 'time') ? 'selected' : ''}>${t('project.risk_impact_unit_cost')}</option>
+              <option value="time" ${(editing && editing.impact_unit === 'time') ? 'selected' : ''}>${t('project.risk_impact_unit_time')}</option>
+            </select>
+          </label>
           <label>${t('project.risk_impact_cost')}<input type="number" required name="impact_cost" min="0" step="0.01" value="${editing ? editing.impact_cost : 0}"></label>
-          <label>${t('project.risk_residual_probability')}<input type="number" name="residual_probability_pct" min="0" max="100" step="1" value="${editing && editing.residual_probability_pct != null ? editing.residual_probability_pct : ''}"></label>
-          <label>${t('project.risk_residual_impact')}<input type="number" name="residual_impact_cost" min="0" step="0.01" value="${editing && editing.residual_impact_cost != null ? editing.residual_impact_cost : ''}"></label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
+            <input type="checkbox" name="is_mitigated" id="riskMitigateCheckbox" style="width:auto;" ${isMitigated ? 'checked' : ''}>
+            ${t('project.risk_mitigate_checkbox')}
+          </label>
+          <div id="riskMitigationFields" ${isMitigated ? '' : 'hidden'}>
+            <label>${t('project.risk_mitigation_strategy')}<textarea name="mitigation_strategy" rows="2" maxlength="400">${editing ? escapeHTML(editing.mitigation_strategy || '') : ''}</textarea></label>
+            <label>${t('project.risk_residual_probability')}<input type="number" name="residual_probability_pct" min="0" max="100" step="1" value="${editing && editing.residual_probability_pct != null ? editing.residual_probability_pct : ''}"></label>
+            <label>${t('project.risk_residual_impact')}<input type="number" name="residual_impact_cost" min="0" step="0.01" value="${editing && editing.residual_impact_cost != null ? editing.residual_impact_cost : ''}"></label>
+          </div>
           <button class="btn btn-ghost btn-small" type="submit">${editingRiskId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="riskMsg"></p>
         </form>
@@ -2527,6 +2555,7 @@ function wireEvents(){
     const msg = document.getElementById('riskMsg');
     msg.textContent = ''; msg.className = 'form-msg';
     const fd = new FormData(e.target);
+    const isMitigated = fd.get('is_mitigated') === 'on';
     const residualProb = fd.get('residual_probability_pct');
     const residualImpact = fd.get('residual_impact_cost');
     const payload = {
@@ -2536,8 +2565,14 @@ function wireEvents(){
       severity: Number(fd.get('severity')),
       probability_pct: Number(fd.get('probability_pct')),
       impact_cost: Number(fd.get('impact_cost')),
-      residual_probability_pct: residualProb === '' ? null : Number(residualProb),
-      residual_impact_cost: residualImpact === '' ? null : Number(residualImpact)
+      impact_unit: fd.get('impact_unit') === 'time' ? 'time' : 'cost',
+      is_mitigated: isMitigated,
+      // Unchecking "Mitigate this risk" clears the after-mitigation fields
+      // rather than just hiding them, so a stale residual estimate can't
+      // linger and silently resurface if the risk is marked mitigated again.
+      mitigation_strategy: isMitigated ? ((fd.get('mitigation_strategy') || '').trim() || null) : null,
+      residual_probability_pct: isMitigated && residualProb !== '' ? Number(residualProb) : null,
+      residual_impact_cost: isMitigated && residualImpact !== '' ? Number(residualImpact) : null
     };
     const editingId = e.target.dataset.editing;
     let error;
@@ -2559,6 +2594,10 @@ function wireEvents(){
     await supabaseClient.from('project_risks').delete().eq('id', btn.dataset.deleteRisk);
     loadProject();
   }));
+  const riskMitigateCheckbox = document.getElementById('riskMitigateCheckbox');
+  if (riskMitigateCheckbox) riskMitigateCheckbox.addEventListener('change', (e) => {
+    document.getElementById('riskMitigationFields').hidden = !e.target.checked;
+  });
 
   content.querySelectorAll('.mitigation-add-row').forEach(form => form.addEventListener('submit', async (e) => {
     e.preventDefault();

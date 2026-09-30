@@ -2218,3 +2218,16 @@ create policy "Team can add mitigations" on project_risk_mitigations
 drop policy if exists "Team can delete mitigations" on project_risk_mitigations;
 create policy "Team can delete mitigations" on project_risk_mitigations
   for delete using (public.is_project_team_member(project_id));
+
+-- ---------------------------------------------------------------------------
+-- impact_cost (despite its name) now doubles as either a dollar amount or a
+-- day count, disambiguated by impact_unit — some risks blow a budget,
+-- others blow a schedule, and forcing both into one column beats a second
+-- near-duplicate schema for "impact but in days". is_mitigated/
+-- mitigation_strategy gate the whole "after mitigation" section of the UI:
+-- until a risk is marked mitigated, residual_probability_pct/
+-- residual_impact_cost are kept null and the after-analysis just isn't shown.
+-- ---------------------------------------------------------------------------
+alter table project_risks add column if not exists impact_unit text not null default 'cost' check (impact_unit in ('cost','time'));
+alter table project_risks add column if not exists is_mitigated boolean not null default false;
+alter table project_risks add column if not exists mitigation_strategy text;
