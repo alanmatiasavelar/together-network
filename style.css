@@ -985,6 +985,10 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
 .wbs-svg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;}
 .wbs-link{fill:none;stroke:#8a97a3;stroke-width:1.5;}
 
+.wbs-code,.req-code{
+  font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:.82em;color:var(--blue-deep);
+  background:var(--mist);border-radius:6px;padding:1px 6px;white-space:nowrap;
+}
 .wbs-list-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);}
 .wbs-list-row:last-child{border-bottom:none;}
 .wbs-list-title{font-size:13.5px;color:var(--ink);}

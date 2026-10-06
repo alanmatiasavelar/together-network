@@ -33,6 +33,39 @@ function escapeHTML(s){
 function initials(name){
   return (name || '?').trim().split(/\s+/).map(w => w[0]).slice(0,2).join('').toUpperCase();
 }
+// WBS items in outline order, each with its number in `code` (1, 1.1,
+// 1.1.2 …). The number is derived from tree position (sort_order, then
+// created_at), so it follows reordering/moving — the usual WBS convention —
+// and is never stored. Shared by project.html and task.html so both show
+// the same numbers.
+function flattenWbsTree(items){
+  const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
+  const roots = [];
+  byId.forEach(node => {
+    if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
+    else roots.push(node);
+  });
+  const bySortOrder = (a, b) => (a.sort_order - b.sort_order) || (new Date(a.created_at) - new Date(b.created_at));
+  byId.forEach(node => node.children.sort(bySortOrder));
+  roots.sort(bySortOrder);
+
+  const out = [];
+  function walk(node, depth, siblings, prefix){
+    const siblingIndex = siblings.indexOf(node);
+    const code = prefix ? `${prefix}.${siblingIndex + 1}` : String(siblingIndex + 1);
+    out.push({ ...node, depth, code, isFirst: siblingIndex === 0, isLast: siblingIndex === siblings.length - 1 });
+    node.children.forEach(c => walk(c, depth + 1, node.children, code));
+  }
+  roots.forEach(r => walk(r, 0, roots, ''));
+  return out;
+}
+
+// id -> "1.2 Title", in outline order (Map preserves insertion order, so
+// iterating it also gives dropdown options in WBS order).
+function wbsLabelMap(items){
+  return new Map(flattenWbsTree(items).map(n => [n.id, `${n.code} ${n.title}`]));
+}
+
 const catLabel = { community:'Community', tech:'Tech', 'social-impact':'Social impact', business:'Business', creative:'Creative', other:'Other' };
 const SKILL_OPTIONS = ['design','frontend','backend','mobile','data','writing','marketing','video','legal','finance','project_management','sales','research','other'];
 const WHATSAPP_LINK_PATTERN = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]+$/;

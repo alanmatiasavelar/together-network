@@ -2231,3 +2231,62 @@ create policy "Team can delete mitigations" on project_risk_mitigations
 alter table project_risks add column if not exists impact_unit text not null default 'cost' check (impact_unit in ('cost','time'));
 alter table project_risks add column if not exists is_mitigated boolean not null default false;
 alter table project_risks add column if not exists mitigation_strategy text;
+
+-- ---------------------------------------------------------------------------
+-- REQUIREMENT NUMBERS: a stable per-project sequence (shown as REQ-001, …).
+-- Unlike WBS codes, which are derived from tree position and so follow
+-- reordering, requirement numbers are stored and never reused or shifted —
+-- other documents refer to "REQ-003", so deleting REQ-002 must not renumber
+-- it. A trigger assigns the next number under a per-project advisory lock
+-- (so two simultaneous inserts can't collide), existing rows were backfilled
+-- in creation order, and a second trigger keeps the number immutable.
+-- ---------------------------------------------------------------------------
+alter table project_requirements add column if not exists req_number integer;
+
+update project_requirements r
+set req_number = s.rn
+from (
+  select id, row_number() over (partition by project_id order by created_at, id) as rn
+  from project_requirements
+) s
+where r.id = s.id and r.req_number is null;
+
+create or replace function public.assign_requirement_number()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform pg_advisory_xact_lock(hashtextextended(new.project_id::text, 0));
+  select coalesce(max(req_number), 0) + 1 into new.req_number
+  from public.project_requirements where project_id = new.project_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_assign_requirement_number on project_requirements;
+create trigger trg_assign_requirement_number
+  before insert on project_requirements
+  for each row execute function public.assign_requirement_number();
+
+alter table project_requirements alter column req_number set not null;
+create unique index if not exists project_requirements_project_number_idx on project_requirements (project_id, req_number);
+
+revoke execute on function public.assign_requirement_number() from public, anon, authenticated;
+
+create or replace function public.keep_requirement_number()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.req_number = old.req_number;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_keep_requirement_number on project_requirements;
+create trigger trg_keep_requirement_number
+  before update on project_requirements
+  for each row execute function public.keep_requirement_number();
+
+revoke execute on function public.keep_requirement_number() from public, anon, authenticated;

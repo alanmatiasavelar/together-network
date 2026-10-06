@@ -1109,6 +1109,7 @@ function ganttConnectorPath(l, byId, minDate, dayWidth, rowCenterY, elbow){
 
 function renderGanttChart(activities, links, zoom, wbsById){
   if (activities.length === 0) return `<p class="credits-note">${t('project.no_activities')}</p>`;
+  const wbsLabels = wbsLabelMap(project.project_wbs_items || []);
 
   let minDate = ganttParseDate(activities[0].start_date);
   let maxDate = ganttParseDate(activities[0].end_date);
@@ -1139,7 +1140,7 @@ function renderGanttChart(activities, links, zoom, wbsById){
     rowCenterY[a.id] = top + rowHeight / 2;
     barsHtml += `<div class="gantt-row" style="top:${top}px;width:${chartWidth}px;"></div>`;
     const wbsItem = a.wbs_item_id && wbsById ? wbsById.get(a.wbs_item_id) : null;
-    const tooltip = `${a.title}: ${a.start_date} → ${a.end_date}${wbsItem ? ` (${wbsItem.title})` : ''}`;
+    const tooltip = `${a.title}: ${a.start_date} → ${a.end_date}${wbsItem ? ` (${wbsLabels.get(wbsItem.id) || wbsItem.title})` : ''}`;
     barsHtml += `
       <div class="gantt-bar" style="left:${left}px;top:${top + 7}px;width:${Math.max(width - 4, 12)}px;height:${rowHeight - 14}px;" title="${escapeHTML(tooltip)}">
         <span class="gantt-bar-label">${escapeHTML(a.title)}</span>
@@ -1341,6 +1342,7 @@ function renderSchedulePanel(){
   const links = project.project_activity_links || [];
   const wbsItems = project.project_wbs_items || [];
   const wbsById = new Map(wbsItems.map(w => [w.id, w]));
+  const wbsLabels = wbsLabelMap(wbsItems);
 
   let html = renderChartToolbar('gantt', ganttZoom, 'both');
   html += `<div id="ganttWrap">${renderGanttChart(activities, links, ganttZoom, wbsById)}</div>`;
@@ -1354,7 +1356,7 @@ function renderSchedulePanel(){
         <div>
           <div class="cost-desc">${escapeHTML(a.title)}</div>
           <div class="cost-meta">${escapeHTML(a.start_date)} → ${escapeHTML(a.end_date)} · ${t('project.created_by')} ${escapeHTML(a.created_by_name)}</div>
-          ${wbsItem ? `<span class="chip" style="margin-top:6px;display:inline-block;">📦 ${escapeHTML(wbsItem.title)}</span>` : ''}
+          ${wbsItem ? `<span class="chip" style="margin-top:6px;display:inline-block;">📦 ${escapeHTML(wbsLabels.get(wbsItem.id) || wbsItem.title)}</span>` : ''}
         </div>
         <div class="item-actions">
           <button class="icon-btn" data-edit-activity="${a.id}">${t('common.edit')}</button>
@@ -1376,7 +1378,7 @@ function renderSchedulePanel(){
           <label>${t('project.task_wbs_label')}
             <select name="wbs_item_id">
               <option value="">${t('project.task_wbs_none')}</option>
-              ${wbsItems.map(w => `<option value="${w.id}" ${editingActivity && editingActivity.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+              ${[...wbsLabels].map(([id, label]) => `<option value="${id}" ${editingActivity && editingActivity.wbs_item_id === id ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}
             </select>
           </label>
           <button class="btn btn-ghost btn-small" type="submit">${editingActivityId ? t('common.save') : t('common.add')}</button>
@@ -1469,13 +1471,15 @@ function renderWbsDiagram(items, zoom){
 
   const { nodes, width, height, nodeW, nodeH } = layoutWbsTree(items, zoom);
   const byId = new Map(nodes.map(n => [n.id, n]));
+  const labels = wbsLabelMap(items);
 
   let boxesHtml = '';
   let linksHtml = '';
   nodes.forEach(n => {
+    const label = labels.get(n.id) || n.title;
     boxesHtml += `
-      <div class="wbs-node ${n.parent_id ? '' : 'is-root'}" style="left:${n.x}px;top:${n.y}px;width:${nodeW}px;height:${nodeH}px;" title="${escapeHTML(n.title)}${n.description ? ' — ' + escapeHTML(n.description) : ''}">
-        <div class="wbs-node-title" style="font-size:${Math.round(12.5 * zoom)}px;">${escapeHTML(n.title)}</div>
+      <div class="wbs-node ${n.parent_id ? '' : 'is-root'}" style="left:${n.x}px;top:${n.y}px;width:${nodeW}px;height:${nodeH}px;" title="${escapeHTML(label)}${n.description ? ' — ' + escapeHTML(n.description) : ''}">
+        <div class="wbs-node-title" style="font-size:${Math.round(12.5 * zoom)}px;">${escapeHTML(label)}</div>
         ${n.description ? `<div class="wbs-node-desc" style="font-size:${Math.round(10.5 * zoom)}px;">${escapeHTML(n.description)}</div>` : ''}
       </div>
     `;
@@ -1512,8 +1516,9 @@ function buildWbsExportSvg(){
   const pad = 20, titleH = 58;
 
   const { nodes } = layoutWbsTree(items, 1, { nodeW, nodeH: 1, gapX, gapY: 0 });
+  const labels = wbsLabelMap(items);
   nodes.forEach(n => {
-    n.titleLines = wrapLabel(n.title, 22, 3);
+    n.titleLines = wrapLabel(labels.get(n.id) || n.title, 22, 3);
     n.descLines = n.description ? wrapLabel(n.description, 28, 3) : [];
     n.boxH = padY * 2 + n.titleLines.length * titleLH + (n.descLines.length ? 4 + n.descLines.length * descLH : 0);
   });
@@ -1584,27 +1589,6 @@ async function exportWbsPng(){
   await exportSvgAsPng(built, wbsExportBaseName() + '.png');
 }
 
-function flattenWbsTree(items){
-  const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
-  const roots = [];
-  byId.forEach(node => {
-    if (node.parent_id && byId.has(node.parent_id)) byId.get(node.parent_id).children.push(node);
-    else roots.push(node);
-  });
-  const bySortOrder = (a, b) => (a.sort_order - b.sort_order) || (new Date(a.created_at) - new Date(b.created_at));
-  byId.forEach(node => node.children.sort(bySortOrder));
-  roots.sort(bySortOrder);
-
-  const out = [];
-  function walk(node, depth, siblings){
-    const siblingIndex = siblings.indexOf(node);
-    out.push({ ...node, depth, isFirst: siblingIndex === 0, isLast: siblingIndex === siblings.length - 1 });
-    node.children.forEach(c => walk(c, depth + 1, node.children));
-  }
-  roots.forEach(r => walk(r, 0, roots));
-  return out;
-}
-
 function nextWbsSortOrder(parentId, excludeId){
   const siblings = (project.project_wbs_items || []).filter(i => (i.parent_id || null) === (parentId || null) && i.id !== excludeId);
   return siblings.length ? Math.max(...siblings.map(s => s.sort_order || 0)) + 1 : 0;
@@ -1643,7 +1627,7 @@ function renderWbsPanel(){
       html += `
         <div class="wbs-list-row" style="padding-left:${item.depth * 20}px;">
           <div>
-            <div class="wbs-list-title">${item.depth > 0 ? '↳ ' : ''}${escapeHTML(item.title)}</div>
+            <div class="wbs-list-title">${item.depth > 0 ? '↳ ' : ''}<span class="wbs-code">${escapeHTML(item.code)}</span> ${escapeHTML(item.title)}</div>
             ${item.description ? `<div class="wbs-list-desc">${escapeHTML(item.description)}</div>` : ''}
           </div>
           <div class="item-actions">
@@ -1669,9 +1653,9 @@ function renderWbsPanel(){
         items.forEach(i => { if (i.parent_id && excluded.has(i.parent_id) && !excluded.has(i.id)){ excluded.add(i.id); added = true; } });
       }
     }
-    const parentOptions = items
+    const parentOptions = flat
       .filter(i => !excluded.has(i.id))
-      .map(i => `<option value="${i.id}" ${editingItem && editingItem.parent_id === i.id ? 'selected' : ''}>${escapeHTML(i.title)}</option>`)
+      .map(i => `<option value="${i.id}" ${editingItem && editingItem.parent_id === i.id ? 'selected' : ''}>${escapeHTML(i.code + ' ' + i.title)}</option>`)
       .join('');
     html += `
       <details class="add-inline" ${editingWbsId ? 'open' : ''} style="margin-top:14px;">
@@ -2286,7 +2270,7 @@ function renderGoalsPanel(isOwner){
 }
 
 function renderRequirementsPanel(isOwner){
-  const reqs = project.project_requirements || [];
+  const reqs = (project.project_requirements || []).slice().sort((a, b) => a.req_number - b.req_number);
   const statuses = ['created','implemented','verified','validated'];
   let html = '';
   if (reqs.length === 0) html += `<p class="credits-note">${t('project.no_requirements')}</p>`;
@@ -2294,7 +2278,7 @@ function renderRequirementsPanel(isOwner){
     html += `
       <div class="req-item">
         <div>
-          <h4>${escapeHTML(r.title)}</h4>
+          <h4><span class="req-code">REQ-${String(r.req_number).padStart(3, '0')}</span> ${escapeHTML(r.title)}</h4>
           ${r.description ? `<p>${escapeHTML(r.description)}</p>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -2332,6 +2316,7 @@ function renderTasksPanel(isOwner, approvedCollabs){
   const tasks = project.project_tasks || [];
   const wbsItems = project.project_wbs_items || [];
   const wbsById = new Map(wbsItems.map(w => [w.id, w]));
+  const wbsLabels = wbsLabelMap(wbsItems);
   const columns = ['created','working','finished','approved'];
   let html = `<p class="poll-meta" style="margin-top:0;">${t('project.tab_kanban_note')}</p>`;
   html += `<div class="kanban">`;
@@ -2347,7 +2332,7 @@ function renderTasksPanel(isOwner, approvedCollabs){
           <h5>${escapeHTML(tk.title)}</h5>
           ${tk.description ? `<p>${escapeHTML(tk.description)}</p>` : ''}
           <div class="task-meta">
-            ${wbsItem ? `<span class="chip">📦 ${escapeHTML(wbsItem.title)}</span>` : ''}
+            ${wbsItem ? `<span class="chip">📦 ${escapeHTML(wbsLabels.get(wbsItem.id) || wbsItem.title)}</span>` : ''}
             ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
             ${tk.due_date ? `<span class="chip">${t('project.due')} ${escapeHTML(tk.due_date)}</span>` : ''}
           </div>
@@ -2384,7 +2369,7 @@ function renderTasksPanel(isOwner, approvedCollabs){
           <label>${t('project.task_wbs_label')}
             <select name="wbs_item_id">
               <option value="">${t('project.task_wbs_none')}</option>
-              ${wbsItems.map(w => `<option value="${w.id}" ${editingTask && editingTask.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+              ${[...wbsLabels].map(([id, label]) => `<option value="${id}" ${editingTask && editingTask.wbs_item_id === id ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}
             </select>
           </label>
           <label>${t('project.task_assignees')}<div class="assignee-checks">${assigneesHTML}</div></label>

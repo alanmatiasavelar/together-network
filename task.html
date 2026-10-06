@@ -73,7 +73,7 @@ let history = [];
 let documents = [];
 let signedUrls = {};
 let editingDocId = null;
-let wbsItems = [];
+let wbsLabels = new Map();
 
 const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -121,11 +121,11 @@ async function loadTask(){
   const [{ data: historyData }, { data: docsData }, { data: wbsData }] = await Promise.all([
     supabaseClient.from('task_status_history').select('*').eq('task_id', taskId).order('changed_at', { ascending: true }),
     supabaseClient.from('task_documents').select('*').eq('task_id', taskId).order('created_at', { ascending: false }),
-    supabaseClient.from('project_wbs_items').select('id, title').eq('project_id', task.project_id).order('title', { ascending: true })
+    supabaseClient.from('project_wbs_items').select('id, title, parent_id, sort_order, created_at').eq('project_id', task.project_id)
   ]);
   history = historyData || [];
   documents = docsData || [];
-  wbsItems = wbsData || [];
+  wbsLabels = wbsLabelMap(wbsData || []);
 
   signedUrls = {};
   await Promise.all(documents.map(async (doc) => {
@@ -201,7 +201,7 @@ function render(){
     ${task.description ? `<p class="project-desc">${escapeHTML(task.description)}</p>` : ''}
     <div class="card-row" style="margin:14px 0;">
       <span class="chip status-badge ${task.status}">${t('project.col_' + task.status)}</span>
-      ${task.project_wbs_items ? `<span class="chip">📦 ${escapeHTML(task.project_wbs_items.title)}</span>` : ''}
+      ${task.project_wbs_items ? `<span class="chip">📦 ${escapeHTML(wbsLabels.get(task.project_wbs_items.id) || task.project_wbs_items.title)}</span>` : ''}
       ${dtLabel ? `<span class="chip${isOverdue ? ' overdue' : ''}">${t('project.due')} ${dtLabel}${isOverdue ? ' · ' + t('task.overdue') : ''}</span>` : ''}
       ${assignees.length ? assignees.map(a => `<span class="chip">${escapeHTML(a)}</span>`).join('') : `<span class="chip">${t('project.task_none_assigned')}</span>`}
     </div>
@@ -230,7 +230,7 @@ function render(){
       <h2>${t('task.change_wbs_heading')}</h2>
       <select class="stage-select" data-task-wbs data-task-id="${task.id}" aria-label="${t('task.change_wbs_heading')}">
         <option value="">${t('project.task_wbs_none')}</option>
-        ${wbsItems.map(w => `<option value="${w.id}" ${task.wbs_item_id === w.id ? 'selected' : ''}>${escapeHTML(w.title)}</option>`).join('')}
+        ${[...wbsLabels].map(([id, label]) => `<option value="${id}" ${task.wbs_item_id === id ? 'selected' : ''}>${escapeHTML(label)}</option>`).join('')}
       </select>
     </div>
   `;
