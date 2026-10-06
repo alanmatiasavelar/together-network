@@ -976,8 +976,12 @@ details.wa-add .wa-form .form-msg{width:100%;margin:0;}
   justify-content:center;overflow:hidden;
 }
 .wbs-node.is-root{border-color:var(--orange);}
-.wbs-node-title{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.wbs-node-desc{font-size:10.5px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;}
+.wbs-node-title,.wbs-node-desc{
+  line-height:1.25;overflow:hidden;word-break:break-word;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;
+}
+.wbs-node-title{font-size:12.5px;font-weight:700;color:var(--ink);}
+.wbs-node-desc{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
 .wbs-svg{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;}
 .wbs-link{fill:none;stroke:#8a97a3;stroke-width:1.5;}
 

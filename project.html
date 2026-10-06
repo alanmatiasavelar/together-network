@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body>
 
@@ -158,20 +157,6 @@ function renderChartToolbar(prefix, zoom, exportMode){
       ${exportBtn}
     </div>
   `;
-}
-
-async function exportChartToPng(scrollElId, filename){
-  const el = document.getElementById(scrollElId);
-  if (!el || typeof html2canvas !== 'function') return;
-  const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 });
-  canvas.toBlob(blob => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-  });
 }
 
 function renderNav(){
@@ -1320,13 +1305,11 @@ function ganttExportBaseName(){
 function exportGanttSvg(){
   const built = buildGanttExportSvg();
   if (!built){ alert(t('project.no_activities')); return; }
-  const src = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\r\n' + built.svg;
-  downloadBlob(new Blob([src], { type: 'image/svg+xml;charset=utf-8' }), ganttExportBaseName() + '.svg');
+  exportSvgFile(built, ganttExportBaseName() + '.svg');
 }
 
-async function exportGanttPng(){
-  const built = buildGanttExportSvg();
-  if (!built){ alert(t('project.no_activities')); return; }
+// Rasterizes an export SVG ({svg,width,height}) to a PNG at up to 3x.
+async function exportSvgAsPng(built, filename){
   const scale = Math.min(3, 8000 / built.width);
   const img = new Image();
   const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
@@ -1339,7 +1322,18 @@ async function exportGanttPng(){
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  canvas.toBlob(blob => { if (blob) downloadBlob(blob, ganttExportBaseName() + '.png'); });
+  canvas.toBlob(blob => { if (blob) downloadBlob(blob, filename); });
+}
+
+function exportSvgFile(built, filename){
+  const src = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\r\n' + built.svg;
+  downloadBlob(new Blob([src], { type: 'image/svg+xml;charset=utf-8' }), filename);
+}
+
+async function exportGanttPng(){
+  const built = buildGanttExportSvg();
+  if (!built){ alert(t('project.no_activities')); return; }
+  await exportSvgAsPng(built, ganttExportBaseName() + '.png');
 }
 
 function renderSchedulePanel(){
@@ -1436,8 +1430,9 @@ function renderSchedulePanel(){
   return html;
 }
 
-function layoutWbsTree(items, zoom){
-  const nodeW = 168 * zoom, nodeH = 56 * zoom, gapX = 26 * zoom, gapY = 64 * zoom;
+function layoutWbsTree(items, zoom, dims){
+  const nodeW = dims ? dims.nodeW : 168 * zoom, nodeH = dims ? dims.nodeH : 80 * zoom;
+  const gapX = dims ? dims.gapX : 26 * zoom, gapY = dims ? dims.gapY : 56 * zoom;
   const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
   const roots = [];
   byId.forEach(node => {
@@ -1503,6 +1498,92 @@ function renderWbsDiagram(items, zoom){
   `;
 }
 
+// Like the Gantt export, the WBS export is drawn from the data at fixed
+// font sizes (not captured from the screen at whatever zoom is active).
+// Titles and descriptions wrap onto up to 3 lines instead of being cut off
+// with an ellipsis, and each tree level is only as tall as its tallest box.
+function buildWbsExportSvg(){
+  const items = project.project_wbs_items || [];
+  if (items.length === 0) return null;
+
+  const FONT = 'Arial, Helvetica, sans-serif';
+  const nodeW = 190, gapX = 24, gapY = 52, padX = 10, padY = 10;
+  const titleLH = 16, descLH = 14;
+  const pad = 20, titleH = 58;
+
+  const { nodes } = layoutWbsTree(items, 1, { nodeW, nodeH: 1, gapX, gapY: 0 });
+  nodes.forEach(n => {
+    n.titleLines = wrapLabel(n.title, 22, 3);
+    n.descLines = n.description ? wrapLabel(n.description, 28, 3) : [];
+    n.boxH = padY * 2 + n.titleLines.length * titleLH + (n.descLines.length ? 4 + n.descLines.length * descLH : 0);
+  });
+
+  const maxDepth = Math.max(...nodes.map(n => n.depth));
+  const depthH = [];
+  for (let d = 0; d <= maxDepth; d++) depthH[d] = Math.max(...nodes.filter(n => n.depth === d).map(n => n.boxH));
+  const depthTop = [];
+  let acc = 0;
+  for (let d = 0; d <= maxDepth; d++){ depthTop[d] = acc; acc += depthH[d] + gapY; }
+  const treeW = Math.max(...nodes.map(n => n.x)) + nodeW;
+  const treeH = acc - gapY;
+
+  const width = Math.max(Math.round(pad * 2 + treeW), 480);
+  const height = Math.round(pad * 2 + titleH + treeH);
+  const offX = Math.round((width - treeW) / 2);
+  const offY = pad + titleH;
+  const byId = new Map(nodes.map(n => [n.id, n]));
+
+  let s = `<rect width="${width}" height="${height}" fill="#ffffff"/>`;
+  s += `<text x="${pad}" y="${pad + 18}" font-family="${FONT}" font-size="18" font-weight="700" fill="#2C3742">${escapeHTML(project.title)} — ${escapeHTML(t('project.tab_wbs'))}</text>`;
+  s += `<text x="${pad}" y="${pad + 38}" font-family="${FONT}" font-size="12" fill="#5A6672">${nodes.length} ${escapeHTML(t('project.wbs_list_heading').toLowerCase())}</text>`;
+
+  let links = '';
+  nodes.forEach(n => {
+    if (!n.parent_id || !byId.has(n.parent_id)) return;
+    const p = byId.get(n.parent_id);
+    const x1 = offX + p.x + nodeW / 2, y1 = offY + depthTop[p.depth] + depthH[p.depth];
+    const x2 = offX + n.x + nodeW / 2, y2 = offY + depthTop[n.depth];
+    const midY = (y1 + y2) / 2;
+    links += `<path d="M${x1},${y1} L${x1},${midY} L${x2},${midY} L${x2},${y2}" fill="none" stroke="#8a97a3" stroke-width="1.5"/>`;
+  });
+  s += links;
+
+  nodes.forEach(n => {
+    const x = offX + n.x, y = offY + depthTop[n.depth], h = depthH[n.depth];
+    s += `<rect x="${x}" y="${y}" width="${nodeW}" height="${h}" rx="8" fill="#ffffff" stroke="${n.parent_id ? '#3E8FD0' : '#E8834F'}" stroke-width="1.5"/>`;
+    const blockH = n.titleLines.length * titleLH + (n.descLines.length ? 4 + n.descLines.length * descLH : 0);
+    let ty = y + (h - blockH) / 2;
+    n.titleLines.forEach(ln => {
+      s += `<text x="${x + nodeW / 2}" y="${ty + 12}" text-anchor="middle" font-family="${FONT}" font-size="13" font-weight="700" fill="#2C3742">${escapeHTML(ln)}</text>`;
+      ty += titleLH;
+    });
+    if (n.descLines.length){
+      ty += 4;
+      n.descLines.forEach(ln => {
+        s += `<text x="${x + nodeW / 2}" y="${ty + 10}" text-anchor="middle" font-family="${FONT}" font-size="11" fill="#5A6672">${escapeHTML(ln)}</text>`;
+        ty += descLH;
+      });
+    }
+  });
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${s}</svg>`;
+  return { svg, width, height };
+}
+
+function wbsExportBaseName(){
+  return (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_') + '-wbs';
+}
+function exportWbsSvg(){
+  const built = buildWbsExportSvg();
+  if (!built){ alert(t('project.wbs_no_items')); return; }
+  exportSvgFile(built, wbsExportBaseName() + '.svg');
+}
+async function exportWbsPng(){
+  const built = buildWbsExportSvg();
+  if (!built){ alert(t('project.wbs_no_items')); return; }
+  await exportSvgAsPng(built, wbsExportBaseName() + '.png');
+}
+
 function flattenWbsTree(items){
   const byId = new Map(items.map(i => [i.id, { ...i, children: [] }]));
   const roots = [];
@@ -1551,7 +1632,7 @@ function renderWbsPanel(){
   const byId = new Map(items.map(i => [i.id, i]));
   const flat = flattenWbsTree(items);
 
-  let html = renderChartToolbar('wbs', wbsZoom);
+  let html = renderChartToolbar('wbs', wbsZoom, 'both');
   html += `<div id="wbsWrap">${renderWbsDiagram(items, wbsZoom)}</div>`;
 
   html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.wbs_list_heading')}</h3>`;
@@ -1900,10 +1981,9 @@ const DIAGRAM_EXPORT_CSS = `
   .diagram-edge{stroke:#8a97a3;stroke-width:1.5;}
 `;
 
-// True vector export (not a html2canvas raster like the Gantt/WBS PNG
-// export) — the diagram is already plain SVG, so this just serializes it
-// as a standalone, styled, full-resolution document, ignoring whatever
-// zoom level or selection highlight is currently on screen.
+// The diagram is already plain SVG, so this just serializes it as a
+// standalone, styled, full-resolution document, ignoring whatever zoom
+// level or selection highlight is currently on screen.
 function exportDiagramSvg(type){
   const state = diagramState[type];
   if (!state || (state.nodes.length === 0 && state.edges.length === 0)){
@@ -2926,14 +3006,14 @@ function wireEvents(){
     render();
   }));
   content.querySelectorAll('[data-export-png]').forEach(btn => btn.addEventListener('click', () => {
-    const prefix = btn.dataset.exportPng;
-    const projectTitle = (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_');
-    if (prefix === 'gantt') exportGanttPng();
-    else exportChartToPng('wbsScroll', `${projectTitle}-wbs.png`);
+    if (btn.dataset.exportPng === 'gantt') exportGanttPng();
+    else exportWbsPng();
   }));
   content.querySelectorAll('[data-export-svg]').forEach(btn => btn.addEventListener('click', () => {
-    if (btn.dataset.exportSvg === 'gantt') exportGanttSvg();
-    else exportDiagramSvg(btn.dataset.exportSvg);
+    const prefix = btn.dataset.exportSvg;
+    if (prefix === 'gantt') exportGanttSvg();
+    else if (prefix === 'wbs') exportWbsSvg();
+    else exportDiagramSvg(prefix);
   }));
 
   // --- Team tab ---
