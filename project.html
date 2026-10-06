@@ -143,9 +143,9 @@ function maybeAutoFitActiveTab(){
 }
 
 function renderChartToolbar(prefix, zoom, exportMode){
-  const exportBtn = exportMode === 'svg'
-    ? `<button type="button" class="btn btn-ghost btn-small" data-export-svg="${prefix}">⤓ ${t('chart.export_svg')}</button>`
-    : `<button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>`;
+  const pngBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>`;
+  const svgBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-svg="${prefix}">⤓ ${t('chart.export_svg')}</button>`;
+  const exportBtn = exportMode === 'svg' ? svgBtn : exportMode === 'both' ? pngBtn + svgBtn : pngBtn;
   return `
     <div class="chart-toolbar">
       <div class="zoom-group">
@@ -1059,6 +1059,69 @@ function ganttFmtDate(ms){
 }
 const GANTT_DAY_MS = 86400000;
 
+// Dates are stored as UTC midnights, so every label must be formatted with
+// timeZone:'UTC' — otherwise users west of Greenwich (e.g. Brazil) see
+// every date shifted back by one day.
+function ganttFmt(ms, opts){
+  return new Date(ms).toLocaleDateString(currentLang, Object.assign({ timeZone: 'UTC' }, opts));
+}
+
+// Two-tier date header shared by the on-screen chart and the export:
+// a month band on top and day numbers underneath. The day step widens
+// (1, 2, 7, 14, 30 days) until labels are at least minTickPx apart, so
+// ticks never overlap no matter the zoom or project length.
+function ganttTickPlan(minDate, totalDays, dayWidth, minTickPx){
+  const months = [];
+  let i = 0;
+  while (i < totalDays){
+    const startMs = minDate + i * GANTT_DAY_MS;
+    const d = new Date(startMs);
+    const nextMonthMs = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+    const days = Math.min(totalDays - i, Math.round((nextMonthMs - startMs) / GANTT_DAY_MS));
+    const w = days * dayWidth;
+    const showYear = d.getUTCMonth() === 0 || months.length === 0;
+    let label = '';
+    if (w >= 62) label = ganttFmt(startMs, showYear ? { month: 'short', year: 'numeric' } : { month: 'short' });
+    else if (w >= 34) label = ganttFmt(startMs, { month: 'short' });
+    else if (w >= 14) label = ganttFmt(startMs, { month: 'short' }).charAt(0).toUpperCase();
+    months.push({ x: i * dayWidth, w, label });
+    i += days;
+  }
+
+  const step = [1, 2, 7, 14, 30].find(s => s * dayWidth >= minTickPx) || 30;
+  const ticks = [];
+  for (let idx = 0; idx < totalDays; idx++){
+    const ms = minDate + idx * GANTT_DAY_MS;
+    const dt = new Date(ms);
+    let on;
+    if (step <= 2) on = idx % step === 0;
+    else if (step === 30) on = dt.getUTCDate() === 1;
+    else on = dt.getUTCDay() === 1 && Math.floor((ms - Date.UTC(1970, 0, 5)) / (7 * GANTT_DAY_MS)) % (step / 7) === 0;
+    if (on) ticks.push({ x: idx * dayWidth, label: String(dt.getUTCDate()) });
+  }
+  return { months, ticks };
+}
+
+function ganttConnectorPath(l, byId, minDate, dayWidth, rowCenterY, elbow){
+  const pred = byId.get(l.predecessor_id), succ = byId.get(l.successor_id);
+  if (!pred || !succ) return null;
+  const col = (ms) => Math.round((ms - minDate) / GANTT_DAY_MS);
+  let x1, x2;
+  if (l.link_type === 'SS'){
+    x1 = col(ganttParseDate(pred.start_date)) * dayWidth;
+    x2 = col(ganttParseDate(succ.start_date)) * dayWidth;
+  } else if (l.link_type === 'FF'){
+    x1 = (col(ganttParseDate(pred.end_date)) + 1) * dayWidth;
+    x2 = (col(ganttParseDate(succ.end_date)) + 1) * dayWidth;
+  } else { // FS
+    x1 = (col(ganttParseDate(pred.end_date)) + 1) * dayWidth;
+    x2 = col(ganttParseDate(succ.start_date)) * dayWidth;
+  }
+  const y1 = rowCenterY[pred.id], y2 = rowCenterY[succ.id];
+  const midX = x2 >= x1 ? x1 + elbow : x1 - elbow;
+  return `M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}`;
+}
+
 function renderGanttChart(activities, links, zoom, wbsById){
   if (activities.length === 0) return `<p class="credits-note">${t('project.no_activities')}</p>`;
 
@@ -1076,13 +1139,10 @@ function renderGanttChart(activities, links, zoom, wbsById){
   const rowHeight = 42;
   const chartWidth = totalDays * dayWidth;
   const chartHeight = activities.length * rowHeight;
-  const labelStep = totalDays > 90 ? 30 : totalDays > 30 ? 7 : 1;
 
-  let ticksHtml = '';
-  for (let i = 0; i < totalDays; i += labelStep){
-    const label = new Date(minDate + i * GANTT_DAY_MS).toLocaleDateString(currentLang, { month: 'short', day: 'numeric' });
-    ticksHtml += `<div class="gantt-tick" style="left:${i * dayWidth}px;">${escapeHTML(label)}</div>`;
-  }
+  const plan = ganttTickPlan(minDate, totalDays, dayWidth, 30);
+  const monthsHtml = plan.months.map(m => `<div class="gantt-month" style="left:${m.x}px;width:${m.w}px;">${escapeHTML(m.label)}</div>`).join('');
+  const ticksHtml = plan.ticks.map(tk => `<div class="gantt-tick" style="left:${tk.x}px;">${escapeHTML(tk.label)}</div>`).join('');
 
   const rowCenterY = {};
   let barsHtml = '';
@@ -1102,32 +1162,16 @@ function renderGanttChart(activities, links, zoom, wbsById){
     `;
   });
 
+  const byId = new Map(activities.map(a => [a.id, a]));
   let connectorsHtml = '';
   links.forEach(l => {
-    const pred = activities.find(a => a.id === l.predecessor_id);
-    const succ = activities.find(a => a.id === l.successor_id);
-    if (!pred || !succ) return;
-    const predStart = ganttParseDate(pred.start_date), predEnd = ganttParseDate(pred.end_date);
-    const succStart = ganttParseDate(succ.start_date), succEnd = ganttParseDate(succ.end_date);
-    let x1, x2;
-    if (l.link_type === 'SS'){
-      x1 = Math.round((predStart - minDate) / GANTT_DAY_MS) * dayWidth;
-      x2 = Math.round((succStart - minDate) / GANTT_DAY_MS) * dayWidth;
-    } else if (l.link_type === 'FF'){
-      x1 = (Math.round((predEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
-      x2 = (Math.round((succEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
-    } else { // FS
-      x1 = (Math.round((predEnd - minDate) / GANTT_DAY_MS) + 1) * dayWidth;
-      x2 = Math.round((succStart - minDate) / GANTT_DAY_MS) * dayWidth;
-    }
-    const y1 = rowCenterY[pred.id], y2 = rowCenterY[succ.id];
-    const midX = x2 >= x1 ? x1 + 14 : x1 - 14;
-    connectorsHtml += `<path d="M${x1},${y1} L${midX},${y1} L${midX},${y2} L${x2},${y2}" class="gantt-link" marker-end="url(#ganttArrow)"/>`;
+    const d = ganttConnectorPath(l, byId, minDate, dayWidth, rowCenterY, 14);
+    if (d) connectorsHtml += `<path d="${d}" class="gantt-link" marker-end="url(#ganttArrow)"/>`;
   });
 
   return `
     <div class="gantt-scroll" id="ganttScroll">
-      <div class="gantt-header" style="width:${chartWidth}px;">${ticksHtml}</div>
+      <div class="gantt-header" style="width:${chartWidth}px;"><div class="gantt-months">${monthsHtml}</div><div class="gantt-days">${ticksHtml}</div></div>
       <div class="gantt-body" style="width:${chartWidth}px;height:${chartHeight}px;">
         ${barsHtml}
         <svg class="gantt-svg" width="${chartWidth}" height="${chartHeight}">
@@ -1143,13 +1187,168 @@ function renderGanttChart(activities, links, zoom, wbsById){
   `;
 }
 
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function wrapLabel(text, maxChars, maxLines){
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = '';
+  words.forEach(w => {
+    while (w.length > maxChars){
+      if (cur){ lines.push(cur); cur = ''; }
+      lines.push(w.slice(0, maxChars));
+      w = w.slice(maxChars);
+    }
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= maxChars) cur += ' ' + w;
+    else { lines.push(cur); cur = w; }
+  });
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines){
+    const kept = lines.slice(0, maxLines);
+    kept[maxLines - 1] = kept[maxLines - 1].slice(0, Math.max(maxChars - 1, 1)).trimEnd() + '…';
+    return kept;
+  }
+  return lines.length ? lines : [''];
+}
+
+// The export is drawn from the data, not captured from the screen: fixed
+// ~920px time axis and fixed font sizes regardless of the current on-screen
+// zoom, activity names in their own column (never squeezed inside a short
+// bar), and plain SVG attributes with no external CSS or web fonts so the
+// file opens identically in a browser, Inkscape, PowerPoint or Word.
+function buildGanttExportSvg(){
+  const activities = (project.project_activities || []).slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
+  if (activities.length === 0) return null;
+  const links = project.project_activity_links || [];
+
+  let first = ganttParseDate(activities[0].start_date), last = ganttParseDate(activities[0].end_date);
+  activities.forEach(a => {
+    first = Math.min(first, ganttParseDate(a.start_date));
+    last = Math.max(last, ganttParseDate(a.end_date));
+  });
+  const minDate = first - GANTT_DAY_MS;
+  const totalDays = Math.round((last + GANTT_DAY_MS - minDate) / GANTT_DAY_MS) + 1;
+
+  const FONT = 'Arial, Helvetica, sans-serif';
+  const pad = 20, labelColW = 290, titleH = 58, headerH = 46;
+  const dayWidth = Math.max(920 / totalDays, 3);
+  const plotW = totalDays * dayWidth;
+
+  const rows = activities.map(a => ({ a, lines: wrapLabel(a.title, 40, 3) }));
+  const maxLines = Math.max(...rows.map(r => r.lines.length));
+  const rowH = maxLines >= 3 ? 68 : maxLines === 2 ? 54 : 40;
+  const bodyH = rows.length * rowH;
+  const width = Math.round(pad * 2 + labelColW + plotW);
+  const height = Math.round(pad * 2 + titleH + headerH + bodyH);
+  const plotX = pad + labelColW;
+  const headerY = pad + titleH;
+  const bodyY = headerY + headerH;
+
+  const plan = ganttTickPlan(minDate, totalDays, dayWidth, 30);
+  let s = '';
+  s += `<rect width="${width}" height="${height}" fill="#ffffff"/>`;
+  s += `<text x="${pad}" y="${pad + 18}" font-family="${FONT}" font-size="18" font-weight="700" fill="#2C3742">${escapeHTML(project.title)} — ${escapeHTML(t('project.tab_schedule'))}</text>`;
+  const fullFmt = { month: 'short', day: 'numeric', year: 'numeric' };
+  s += `<text x="${pad}" y="${pad + 38}" font-family="${FONT}" font-size="12" fill="#5A6672">${escapeHTML(ganttFmt(first, fullFmt))} – ${escapeHTML(ganttFmt(last, fullFmt))}</text>`;
+
+  s += `<rect x="${plotX}" y="${headerY}" width="${plotW}" height="${headerH}" fill="#EEF4F8"/>`;
+  plan.months.forEach(m => {
+    s += `<line x1="${plotX + m.x}" y1="${headerY}" x2="${plotX + m.x}" y2="${headerY + 22}" stroke="#C9D3DA" stroke-width="1"/>`;
+    if (m.label) s += `<text x="${plotX + m.x + 5}" y="${headerY + 15}" font-family="${FONT}" font-size="12" font-weight="700" fill="#2C3742">${escapeHTML(m.label)}</text>`;
+  });
+  s += `<line x1="${plotX}" y1="${headerY + 22}" x2="${plotX + plotW}" y2="${headerY + 22}" stroke="#C9D3DA" stroke-width="1"/>`;
+
+  rows.forEach((r, idx) => {
+    const y = bodyY + idx * rowH;
+    s += `<rect x="${pad}" y="${y}" width="${labelColW + plotW}" height="${rowH}" fill="${idx % 2 ? '#F7FAFC' : '#ffffff'}"/>`;
+  });
+  plan.ticks.forEach(tk => {
+    const x = plotX + tk.x;
+    s += `<line x1="${x}" y1="${headerY + 22}" x2="${x}" y2="${bodyY + bodyH}" stroke="#E3E8EC" stroke-width="1"/>`;
+    s += `<text x="${x + 4}" y="${headerY + 38}" font-family="${FONT}" font-size="12" fill="#2C3742">${escapeHTML(tk.label)}</text>`;
+  });
+
+  const rowCenterY = {};
+  rows.forEach((r, idx) => {
+    const a = r.a;
+    const y = bodyY + idx * rowH;
+    rowCenterY[a.id] = idx * rowH + rowH / 2;
+    const n = r.lines.length;
+    const blockH = n * 15 + 14;
+    const top = y + (rowH - blockH) / 2;
+    r.lines.forEach((ln, k) => {
+      s += `<text x="${pad + 8}" y="${top + 12 + k * 15}" font-family="${FONT}" font-size="13" font-weight="700" fill="#2C3742">${escapeHTML(ln)}</text>`;
+    });
+    const sameYear = new Date(ganttParseDate(a.start_date)).getUTCFullYear() === new Date(ganttParseDate(a.end_date)).getUTCFullYear();
+    const dFmt = sameYear ? { month: 'short', day: 'numeric' } : fullFmt;
+    s += `<text x="${pad + 8}" y="${top + n * 15 + 11}" font-family="${FONT}" font-size="11" fill="#5A6672">${escapeHTML(ganttFmt(ganttParseDate(a.start_date), dFmt))} – ${escapeHTML(ganttFmt(ganttParseDate(a.end_date), dFmt))}</text>`;
+
+    const start = ganttParseDate(a.start_date), end = ganttParseDate(a.end_date);
+    const bx = plotX + Math.round((start - minDate) / GANTT_DAY_MS) * dayWidth;
+    const bw = Math.max((Math.round((end - start) / GANTT_DAY_MS) + 1) * dayWidth - 2, 4);
+    s += `<rect x="${bx}" y="${y + 10}" width="${bw}" height="${rowH - 20}" rx="4" fill="#3E8FD0" stroke="#1F5C93" stroke-width="1"/>`;
+  });
+
+  s += `<line x1="${plotX}" y1="${headerY}" x2="${plotX}" y2="${bodyY + bodyH}" stroke="#C9D3DA" stroke-width="1"/>`;
+  s += `<rect x="${pad}" y="${headerY}" width="${labelColW + plotW}" height="${headerH + bodyH}" fill="none" stroke="#C9D3DA" stroke-width="1"/>`;
+
+  const byId = new Map(activities.map(a => [a.id, a]));
+  let connectors = '';
+  links.forEach(l => {
+    const d = ganttConnectorPath(l, byId, minDate, dayWidth, rowCenterY, 8);
+    if (d) connectors += `<path d="${d}" fill="none" stroke="#8a97a3" stroke-width="1.5" marker-end="url(#ganttExportArrow)"/>`;
+  });
+  if (connectors){
+    s += `<g transform="translate(${plotX},${bodyY})">${connectors}</g>`;
+  }
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><defs><marker id="ganttExportArrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#8a97a3"/></marker></defs>${s}</svg>`;
+  return { svg, width, height };
+}
+
+function ganttExportBaseName(){
+  return (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_') + '-gantt';
+}
+
+function exportGanttSvg(){
+  const built = buildGanttExportSvg();
+  if (!built){ alert(t('project.no_activities')); return; }
+  const src = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>\r\n' + built.svg;
+  downloadBlob(new Blob([src], { type: 'image/svg+xml;charset=utf-8' }), ganttExportBaseName() + '.svg');
+}
+
+async function exportGanttPng(){
+  const built = buildGanttExportSvg();
+  if (!built){ alert(t('project.no_activities')); return; }
+  const scale = Math.min(3, 8000 / built.width);
+  const img = new Image();
+  const loaded = new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; });
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(built.svg);
+  await loaded;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(built.width * scale);
+  canvas.height = Math.round(built.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob(blob => { if (blob) downloadBlob(blob, ganttExportBaseName() + '.png'); });
+}
+
 function renderSchedulePanel(){
   const activities = (project.project_activities || []).slice().sort((a, b) => new Date(a.start_date) - new Date(b.start_date));
   const links = project.project_activity_links || [];
   const wbsItems = project.project_wbs_items || [];
   const wbsById = new Map(wbsItems.map(w => [w.id, w]));
 
-  let html = renderChartToolbar('gantt', ganttZoom);
+  let html = renderChartToolbar('gantt', ganttZoom, 'both');
   html += `<div id="ganttWrap">${renderGanttChart(activities, links, ganttZoom, wbsById)}</div>`;
 
   html += `<div class="section-block" style="margin-top:24px;"><h3 style="font-size:15px;margin-bottom:10px;">${t('project.activities_heading')}</h3>`;
@@ -2729,11 +2928,12 @@ function wireEvents(){
   content.querySelectorAll('[data-export-png]').forEach(btn => btn.addEventListener('click', () => {
     const prefix = btn.dataset.exportPng;
     const projectTitle = (project.title || 'project').replace(/[^A-Za-z0-9_-]+/g, '_');
-    if (prefix === 'gantt') exportChartToPng('ganttScroll', `${projectTitle}-gantt.png`);
+    if (prefix === 'gantt') exportGanttPng();
     else exportChartToPng('wbsScroll', `${projectTitle}-wbs.png`);
   }));
   content.querySelectorAll('[data-export-svg]').forEach(btn => btn.addEventListener('click', () => {
-    exportDiagramSvg(btn.dataset.exportSvg);
+    if (btn.dataset.exportSvg === 'gantt') exportGanttSvg();
+    else exportDiagramSvg(btn.dataset.exportSvg);
   }));
 
   // --- Team tab ---
