@@ -1135,3 +1135,10 @@ summary:focus-visible,[tabindex]:focus-visible{
 .chat-log::-webkit-scrollbar,.assignee-checks::-webkit-scrollbar{width:7px;}
 .chat-log::-webkit-scrollbar-thumb,.assignee-checks::-webkit-scrollbar-thumb{background:var(--line);border-radius:100px;}
 .chat-log::-webkit-scrollbar-track,.assignee-checks::-webkit-scrollbar-track{background:transparent;}
+
+/* email-confirmation backlog banner (accounts in the 7-day grace period) */
+.backlog-banner{
+  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px;
+  padding:10px 20px;background:#FFF6E9;border-bottom:1px solid #F0DDB8;color:#8A5A18;font-size:14px;
+}
+.backlog-banner .backlog-status{font-size:13px;font-weight:500;}

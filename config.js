@@ -123,6 +123,54 @@ function showConfigBannerIfNeeded(){
 }
 
 /* ====================================================================
+   Email-confirmation backlog banner — shown to accounts created while the
+   email limit was exhausted (see supabase/migrations/email_confirmation_backlog.sql).
+   They can use the site until their deadline; confirming the email via the
+   link we send keeps the account.
+   ==================================================================== */
+async function initEmailBacklogBanner(user){
+  const old = document.getElementById('backlogBanner');
+  if (old) old.remove();
+  if (!supabaseClient || !user) return;
+  let row = null;
+  try {
+    const { data } = await supabaseClient.from('email_confirmation_backlog')
+      .select('status, deadline').eq('user_id', user.id).maybeSingle();
+    row = data;
+  } catch (e) { return; }
+  if (!row || row.status !== 'pending') return;
+  // initNotifications can run more than once per page; re-check after the await so we never stack banners.
+  const existing = document.getElementById('backlogBanner');
+  if (existing) existing.remove();
+
+  const msLeft = new Date(row.deadline).getTime() - Date.now();
+  const daysLeft = Math.ceil(msLeft / 86400000);
+  const text = daysLeft >= 1 ? `${t('backlog.banner')} ${daysLeft}` : t('backlog.less_than_day');
+  const bar = document.createElement('div');
+  bar.id = 'backlogBanner';
+  bar.className = 'backlog-banner';
+  bar.innerHTML = `<span>${escapeHTML(text)}</span><button type="button" class="btn btn-primary btn-small" id="backlogSendBtn">${t('backlog.send')}</button><span class="backlog-status" id="backlogStatus" role="status"></span>`;
+  document.body.insertBefore(bar, document.body.firstChild);
+
+  const btn = document.getElementById('backlogSendBtn');
+  const status = document.getElementById('backlogStatus');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    status.textContent = '';
+    const emailRedirectTo = new URL('confirm-email.html', window.location.href).href;
+    const { error } = await supabaseClient.auth.signInWithOtp({ email: user.email, options: { emailRedirectTo, shouldCreateUser: false } });
+    if (error){
+      status.textContent = (error.status === 429 || /rate|limit/i.test(error.message)) ? t('backlog.limit') : t('backlog.error');
+      btn.disabled = false;
+      return;
+    }
+    try { await supabaseClient.rpc('record_confirmation_email_attempt'); } catch (e) {}
+    status.textContent = t('backlog.sent');
+    setTimeout(() => { btn.disabled = false; }, 60000);
+  });
+}
+
+/* ====================================================================
    Notifications — shared bell icon + dropdown, used by every page that
    has a logged-in nav state. Call initNotifications(user) once you know
    who's signed in (or null to tear it down on sign-out).
@@ -166,6 +214,7 @@ function teardownNotifications(){
 }
 
 async function initNotifications(user){
+  initEmailBacklogBanner(user);
   const slot = document.getElementById('notifSlot');
   if (!slot) return;
   if (!supabaseClient || !user){ teardownNotifications(); return; }

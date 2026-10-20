@@ -93,24 +93,51 @@
     }
     const submitBtn = e.target.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
-    const { data, error } = await supabaseClient.auth.signUp({
-      email: fd.get('email'),
-      password: fd.get('password'),
-      options: { data: { display_name: fd.get('name') } }
-    });
-    submitBtn.disabled = false;
-    if (error){
-      msg.textContent = error.message;
-      msg.className = 'form-msg error';
-      return;
+    // Sign-up goes through the "signup" edge function: it behaves like a normal sign-up, but when the
+    // hourly email limit is exhausted it creates a 7-day grace-period account instead of failing.
+    let result;
+    try {
+      const res = await fetch(SUPABASE_URL + '/functions/v1/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY },
+        body: JSON.stringify({ email: fd.get('email'), password: fd.get('password'), display_name: fd.get('name') })
+      });
+      if (!res.ok) throw new Error('signup function ' + res.status);
+      result = await res.json();
+    } catch (err) {
+      // Function unreachable: fall back to the plain sign-up (no grace period).
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: fd.get('email'),
+        password: fd.get('password'),
+        options: { data: { display_name: fd.get('name') } }
+      });
+      result = error ? { mode: 'error', message: error.message } : (data.session ? { mode: 'direct' } : { mode: 'confirm' });
     }
-    if (data.session){
+    submitBtn.disabled = false;
+
+    if (result.mode === 'session' && result.access_token){
+      await supabaseClient.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
+      result.mode = 'direct';
+    }
+    if (result.mode === 'direct'){
       msg.textContent = t('signup.msg_success');
       msg.className = 'form-msg ok';
       window.location.href = 'projects.html';
-    } else {
+    } else if (result.mode === 'confirm'){
       msg.textContent = t('signup.msg_confirm');
       msg.className = 'form-msg ok';
+    } else if (result.mode === 'grace'){
+      msg.textContent = t('signup.msg_grace');
+      msg.className = 'form-msg ok';
+    } else if (result.mode === 'exists'){
+      msg.textContent = t('signup.err_exists');
+      msg.className = 'form-msg error';
+    } else if (result.mode === 'busy'){
+      msg.textContent = t('signup.err_busy');
+      msg.className = 'form-msg error';
+    } else {
+      msg.textContent = result.message || t('signup.err_busy');
+      msg.className = 'form-msg error';
     }
   });
 </script>

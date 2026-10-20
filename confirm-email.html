@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Confirm your email — Together</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<div class="config-banner" id="configBanner" hidden>
+  <div class="wrap">
+    <span><strong>Demo mode:</strong> <span data-i18n="banner.demo_login">connect a free Supabase project to turn on real log in.</span></span>
+    <button id="dismissBanner" aria-label="Dismiss">&times;</button>
+  </div>
+</div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html"><img src="assets/logo.png" alt="Together"/></a>
+    <div class="nav-auth">
+      <a class="btn btn-ghost" href="login.html" data-i18n="nav.login">Log in</a>
+    </div>
+    <span id="langSlot"></span>
+  </div>
+</header>
+
+<main class="auth-page">
+  <div class="auth-card" id="confirmCard">
+    <h1 data-i18n="confirm.heading">Confirm your email</h1>
+    <p class="auth-sub" id="confirmSub" data-i18n="confirm.checking">Checking your link…</p>
+
+    <form id="confirmForm" class="auth-form" hidden>
+      <label><span data-i18n="confirm.new_password">New password</span><input type="password" required name="password" minlength="6" autocomplete="new-password"></label>
+      <button class="btn btn-primary" type="submit" data-i18n="confirm.save">Save password and continue</button>
+      <p class="form-msg" id="confirmMsg"></p>
+    </form>
+
+    <p class="auth-switch" id="confirmContinue" hidden><a href="projects.html" data-i18n="confirm.continue">Continue to projects →</a></p>
+    <p class="auth-switch" id="confirmLogin" hidden><a href="login.html" data-i18n="nav.login">Log in</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap footer-inner">
+    <div class="footer-brand"><img src="assets/logo.png" alt="Together"/></div>
+    <p class="fine">© <span id="year"></span> Together. <span data-i18n="footer.tagline">Join efforts, not feeds.</span></p>
+    <a class="contact" href="terms.html" data-i18n="footer.terms">Terms of Use</a>
+    <a class="contact" href="mailto:aolbr_mail@yahoo.com.br" data-i18n="footer.contact">Contact →</a>
+  </div>
+</footer>
+
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+  showConfigBannerIfNeeded();
+  document.getElementById('langSlot').innerHTML = langSwitcherHTML();
+  wireLangSwitcher();
+  applyStaticTranslations();
+  function onLangChange(){}
+
+  const sub = document.getElementById('confirmSub');
+  const form = document.getElementById('confirmForm');
+
+  function fail(key){
+    sub.textContent = t(key);
+    sub.className = 'auth-sub form-msg error';
+    form.hidden = true;
+  }
+
+  async function init(){
+    if (!supabaseClient){ fail('login.err_not_connected'); return; }
+    // The emailed link signs the user in (supabase-js reads the token from the URL). That email-link
+    // sign-in is the proof that they own the address; the database checks it again in confirm_my_email().
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session){
+      fail('confirm.no_session');
+      document.getElementById('confirmLogin').hidden = false;
+      return;
+    }
+    const { data: row } = await supabaseClient.from('email_confirmation_backlog')
+      .select('status').eq('user_id', session.user.id).maybeSingle();
+    if (!row || row.status === 'verified'){
+      sub.textContent = t('confirm.already');
+      sub.className = 'auth-sub form-msg ok';
+      document.getElementById('confirmContinue').hidden = false;
+      return;
+    }
+    sub.textContent = t('confirm.password_note');
+    sub.className = 'auth-sub';
+    form.hidden = false;
+  }
+
+  // Order matters: the password is changed FIRST, then the email is marked confirmed. Anyone who
+  // registered this address before its owner could confirm it therefore loses access with their old password.
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = document.getElementById('confirmMsg');
+    msg.textContent = ''; msg.className = 'form-msg';
+    const password = new FormData(e.target).get('password');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    if (error){
+      submitBtn.disabled = false;
+      msg.textContent = error.message;
+      msg.className = 'form-msg error';
+      return;
+    }
+    const { data: ok, error: rpcError } = await supabaseClient.rpc('confirm_my_email');
+    submitBtn.disabled = false;
+    if (rpcError || !ok){
+      msg.textContent = t('confirm.error');
+      msg.className = 'form-msg error';
+      return;
+    }
+    form.hidden = true;
+    sub.textContent = t('confirm.done');
+    sub.className = 'auth-sub form-msg ok';
+    document.getElementById('confirmContinue').hidden = false;
+    setTimeout(() => { window.location.href = 'projects.html'; }, 1800);
+  });
+
+  init();
+</script>
+
+</body>
+</html>

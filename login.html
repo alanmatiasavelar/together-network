@@ -90,7 +90,7 @@
     });
     submitBtn.disabled = false;
     if (error){
-      msg.textContent = error.message;
+      msg.textContent = (error.code === 'user_banned' || /banned/i.test(error.message)) ? t('login.err_expired') : error.message;
       msg.className = 'form-msg error';
       return;
     }

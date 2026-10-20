@@ -69,6 +69,7 @@ const content = document.getElementById('pageContent');
 let currentUser = null;
 let isAdmin = false;
 let pending = [];
+let backlog = [];
 let approved = [];
 let flagged = [];
 let stats = null;
@@ -143,6 +144,9 @@ async function loadAdmin(){
     stageCounts
   };
   pending = pendingRows || [];
+  const { data: backlogRows } = await supabaseClient.from('email_confirmation_backlog')
+    .select('user_id, email, status, created_at, deadline, email_attempts, extended_count').neq('status', 'verified').order('deadline', { ascending: true });
+  backlog = backlogRows || [];
   approved = approvedRows || [];
   flagged = [
     ...(flaggedPosts || []).map(r => ({ table: 'project_posts', id: r.id, text: r.text, author: null, categories: r.flag_categories, created_at: r.created_at, project: r.projects?.title, typeLabel: t('admin.type_post') })),
@@ -174,6 +178,28 @@ function render(){
       </div>
     </div>`;
   }
+
+  html += `<div class="section-block"><h2>${t('admin.backlog_heading')}</h2><p class="credits-note">${t('admin.backlog_sub')}</p>`;
+  if (backlog.length === 0){
+    html += `<p class="credits-note">${t('admin.backlog_empty')}</p>`;
+  } else {
+    backlog.forEach(b => {
+      const daysLeft = Math.ceil((new Date(b.deadline) - Date.now()) / 86400000);
+      const expired = b.status === 'expired';
+      html += `
+        <div class="notify-row">
+          <span class="req-name">${escapeHTML(b.email)}
+            <span class="chip">${expired ? t('admin.backlog_status_expired') : t('admin.backlog_status_pending')}</span>
+            <span class="credits-note">${t('admin.backlog_col_joined')}: ${new Date(b.created_at).toLocaleDateString()} · ${t('admin.backlog_col_left')}: ${expired ? 0 : Math.max(daysLeft, 0)} · ${t('admin.backlog_col_tries')}: ${b.email_attempts}</span>
+          </span>
+          <div class="notify-actions">
+            <button class="btn btn-ghost btn-small" data-extend-backlog="${b.user_id}">${t('admin.backlog_extend')}</button>
+          </div>
+        </div>
+      `;
+    });
+  }
+  html += `</div>`;
 
   html += `<div class="section-block"><h2>${t('admin.pending_heading')}</h2>`;
   if (pending.length === 0){
@@ -241,6 +267,11 @@ function render(){
 }
 
 function wireEvents(){
+  content.querySelectorAll('[data-extend-backlog]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    await supabaseClient.rpc('admin_extend_email_backlog', { p_user_id: btn.dataset.extendBacklog });
+    loadAdmin();
+  }));
   content.querySelectorAll('[data-approve-premium]').forEach(btn => btn.addEventListener('click', async () => {
     btn.disabled = true;
     await supabaseClient.from('profiles').update({ is_premium: true, premium_status: 'approved' }).eq('id', btn.dataset.approvePremium);
