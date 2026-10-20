@@ -2290,3 +2290,40 @@ create trigger trg_keep_requirement_number
   for each row execute function public.keep_requirement_number();
 
 revoke execute on function public.keep_requirement_number() from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- DATA API GRANTS. From 2026-10-30 Supabase no longer auto-grants API access
+-- to tables created in "public": without an explicit GRANT, supabase-js /
+-- PostgREST return "permission denied" (this includes new projects, preview
+-- branches and `supabase db reset` built from this file). Existing production
+-- tables keep the grants they already had.
+--
+--   * anon: SELECT only. Logged-out pages read public projects/posts, and
+--     PostgREST needs SELECT on every table named in an embedded select (e.g.
+--     project.html's big select for a logged-out visitor) or it rejects the
+--     whole request instead of letting RLS return zero rows.
+--   * authenticated / service_role: full CRUD. Row access is still decided by
+--     the RLS policies above; these grants only open the door to the table.
+--
+-- RULE FOR NEW TABLES: add the table to the three lists below (or grant it in
+-- the same migration that creates it) — enabling RLS alone is not enough.
+-- ---------------------------------------------------------------------------
+grant select on
+  public.event_rsvps, public.notifications, public.poll_votes, public.profiles, public.project_activities,
+  public.project_activity_links, public.project_ai_messages, public.project_chat_messages, public.project_collaborators,
+  public.project_costs, public.project_diagrams, public.project_events, public.project_favorites, public.project_feed_posts,
+  public.project_goals, public.project_links, public.project_polls, public.project_post_likes, public.project_posts,
+  public.project_requirements, public.project_risk_mitigations, public.project_risks, public.project_stakeholders,
+  public.project_supporters, public.project_tasks, public.project_wbs_items, public.projects, public.task_assignees,
+  public.task_documents, public.task_status_history
+to anon;
+
+grant select, insert, update, delete on
+  public.event_rsvps, public.notifications, public.poll_votes, public.profiles, public.project_activities,
+  public.project_activity_links, public.project_ai_messages, public.project_chat_messages, public.project_collaborators,
+  public.project_costs, public.project_diagrams, public.project_events, public.project_favorites, public.project_feed_posts,
+  public.project_goals, public.project_links, public.project_polls, public.project_post_likes, public.project_posts,
+  public.project_requirements, public.project_risk_mitigations, public.project_risks, public.project_stakeholders,
+  public.project_supporters, public.project_tasks, public.project_wbs_items, public.projects, public.task_assignees,
+  public.task_documents, public.task_status_history
+to authenticated, service_role;
