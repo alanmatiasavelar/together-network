@@ -70,7 +70,7 @@ const content = document.getElementById('pageContent');
 const TAB_GROUPS = {
   general: ['overview', 'feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
   pm: ['schedule', 'wbs', 'team', 'costs', 'stakeholders', 'risks'],
-  se: ['requirements', 'usecases', 'architecture']
+  se: ['requirements', 'usecases', 'architecture', 'traceability']
 };
 const VALID_TABS = Object.values(TAB_GROUPS).flat();
 const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
@@ -393,6 +393,7 @@ function render(){
     <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
     <div class="tab-panel" data-panel="usecases" ${activeTab !== 'usecases' ? 'hidden' : ''}>${renderDiagramPanel('usecases')}</div>
     <div class="tab-panel" data-panel="architecture" ${activeTab !== 'architecture' ? 'hidden' : ''}>${renderDiagramPanel('architecture')}</div>
+    <div class="tab-panel" data-panel="traceability" ${activeTab !== 'traceability' ? 'hidden' : ''}>${renderTraceabilityPanel(isOwner)}</div>
   `;
 
   content.innerHTML = html;
@@ -510,6 +511,8 @@ function renderOverviewPanel(isOwner){
   }
   html += `<button class="btn btn-ghost btn-small" data-jump-tab="feed" type="button">${t('project.overview_see_posts')}</button>`;
   html += `</div>`;
+
+  html += renderSeCoverageBlock();
 
   return html;
 }
@@ -1992,12 +1995,20 @@ function exportDiagramSvg(type){
   URL.revokeObjectURL(url);
 }
 
-function renderDiagramPanel(type){
+// Loads a diagram's working copy from the saved row the first time it's needed.
+// Shared with the requirements/traceability views so they see the same nodes
+// (including not-yet-saved edits) that the diagram tabs show.
+function ensureDiagramState(type){
   if (!diagramState[type]){
     const saved = (project.project_diagrams || []).find(d => d.type === type);
     diagramState[type] = saved && saved.data ? JSON.parse(JSON.stringify(saved.data)) : { nodes: [], edges: [] };
     diagramDirty[type] = false;
   }
+  return diagramState[type];
+}
+
+function renderDiagramPanel(type){
+  ensureDiagramState(type);
   const palette = DIAGRAM_PALETTES[type];
   return `
     <div class="diagram-toolbar">
@@ -2015,7 +2026,10 @@ function renderDiagramPanel(type){
   `;
 }
 
+let seViewsStale = false;
+
 function refreshDiagramCanvas(type){
+  seViewsStale = true;
   const wrap = document.getElementById('diagramScroll-' + type);
   if (!wrap) return;
   wrap.innerHTML = buildDiagramSvgHTML(type);
@@ -2269,6 +2283,152 @@ function renderGoalsPanel(isOwner){
   return html;
 }
 
+// ---------------------------------------------------------------------------
+// TRACEABILITY: requirements link to use-case nodes and architecture-block
+// nodes of the saved/working diagrams. Links live on the requirement
+// (project_requirements.links = [{t:'usecases'|'architecture', id:<node id>}]);
+// everything below is derived from that plus the diagram nodes, so the
+// matrix, gap list and coverage figures update as soon as either changes.
+// A link whose node has since been deleted from its diagram is ignored.
+// ---------------------------------------------------------------------------
+const SE_NODE_KIND = { usecases: 'usecase', architecture: 'block' };
+const SE_STATUSES = ['created', 'implemented', 'verified', 'validated'];
+
+function seTargets(type){
+  return ensureDiagramState(type).nodes.filter(n => n.kind === SE_NODE_KIND[type]);
+}
+function seReqLinkIds(req, type){
+  const live = new Set(seTargets(type).map(n => n.id));
+  return (req.links || []).filter(l => l.t === type && live.has(l.id)).map(l => l.id);
+}
+function seCurrentLinks(req){
+  return [
+    ...seReqLinkIds(req, 'usecases').map(id => ({ t: 'usecases', id })),
+    ...seReqLinkIds(req, 'architecture').map(id => ({ t: 'architecture', id }))
+  ];
+}
+function seAnalyze(){
+  const reqs = (project.project_requirements || []).slice().sort((a, b) => a.req_number - b.req_number);
+  const useCases = seTargets('usecases'), blocks = seTargets('architecture');
+  const usedUc = new Set(), usedBl = new Set();
+  const rows = reqs.map(req => {
+    const uc = new Set(seReqLinkIds(req, 'usecases')), bl = new Set(seReqLinkIds(req, 'architecture'));
+    uc.forEach(id => usedUc.add(id)); bl.forEach(id => usedBl.add(id));
+    return { req, uc, bl };
+  });
+  const byStatus = {};
+  SE_STATUSES.forEach(s => { byStatus[s] = reqs.filter(r => r.status === s).length; });
+  return {
+    reqs, rows, useCases, blocks, byStatus, total: reqs.length,
+    allocated: rows.filter(r => r.bl.size > 0).length,
+    traced: rows.filter(r => r.uc.size > 0).length,
+    verified: byStatus.verified + byStatus.validated,
+    reqNoBlock: rows.filter(r => r.bl.size === 0).map(r => r.req),
+    reqNoUseCase: rows.filter(r => r.uc.size === 0).map(r => r.req),
+    blockNoReq: blocks.filter(b => !usedBl.has(b.id)),
+    useCaseNoReq: useCases.filter(u => !usedUc.has(u.id))
+  };
+}
+const sePct = (n, total) => total ? Math.round((n / total) * 100) : 0;
+const seReqCode = (r) => 'REQ-' + String(r.req_number).padStart(3, '0');
+
+function seCoverageCards(a){
+  const card = (n, label) => `<div class="stat-card"><div class="stat-value">${sePct(n, a.total)}%</div><div class="stat-label">${label} · ${n}/${a.total}</div></div>`;
+  return `<div class="stat-grid" style="margin-bottom:14px;">
+      <div class="stat-card"><div class="stat-value">${a.total}</div><div class="stat-label">${t('cov.total')}</div></div>
+      ${card(a.allocated, t('cov.allocated'))}
+      ${card(a.traced, t('cov.traced'))}
+      ${card(a.verified, t('cov.verified'))}
+    </div>
+    <div class="se-status-bar" role="img" aria-label="${SE_STATUSES.map(s => `${t('project.status.' + s)}: ${a.byStatus[s]}`).join(', ')}">
+      ${SE_STATUSES.map(s => a.byStatus[s] ? `<span class="se-seg ${s}" style="flex:${a.byStatus[s]}" title="${t('project.status.' + s)}: ${a.byStatus[s]}"></span>` : '').join('')}
+    </div>
+    <div class="card-row" style="margin:10px 0 14px;">
+      ${SE_STATUSES.map(s => `<span class="chip"><span class="se-dot ${s}"></span>${t('project.status.' + s)}: ${a.byStatus[s]}</span>`).join('')}
+    </div>`;
+}
+
+// Overview tab: a compact "where are we" view of the systems-engineering work.
+function renderSeCoverageBlock(){
+  const a = seAnalyze();
+  let html = `<div class="section-block"><h2>${t('cov.heading')}</h2>`;
+  html += a.total === 0 ? `<p class="credits-note">${t('cov.empty')}</p>` : seCoverageCards(a);
+  html += `<div style="display:flex;flex-wrap:wrap;gap:8px;">
+      <button class="btn btn-ghost btn-small" data-jump-tab="requirements" type="button">${t('cov.open_requirements')}</button>
+      <button class="btn btn-ghost btn-small" data-jump-tab="traceability" type="button">${t('cov.open')}</button>
+    </div></div>`;
+  return html;
+}
+
+function renderTraceabilityPanel(isOwner){
+  const a = seAnalyze();
+  let html = '';
+  if (a.total === 0) return `<p class="credits-note">${t('trace.empty_reqs')}</p>`;
+
+  html += `<div class="section-block" style="margin-top:0;"><h2>${t('trace.coverage_heading')}</h2>${seCoverageCards(a)}</div>`;
+
+  const gapList = (title, items, labelOf) => items.length
+    ? `<div class="se-gap"><h4>${title} <span class="chip chip-warn">${items.length}</span></h4><div class="card-row">${items.map(i => `<span class="chip">${escapeHTML(labelOf(i))}</span>`).join('')}</div></div>` : '';
+  const gaps = gapList(t('trace.gap_req_no_block'), a.reqNoBlock, r => `${seReqCode(r)} ${r.title}`)
+    + gapList(t('trace.gap_req_no_usecase'), a.reqNoUseCase, r => `${seReqCode(r)} ${r.title}`)
+    + gapList(t('trace.gap_block_no_req'), a.blockNoReq, n => n.label)
+    + gapList(t('trace.gap_usecase_no_req'), a.useCaseNoReq, n => n.label);
+  html += `<div class="section-block"><h2>${t('trace.gaps_heading')}</h2>${gaps || `<p class="credits-note">${t('trace.no_gaps')}</p>`}</div>`;
+
+  const cols = [
+    ...a.useCases.map(n => ({ type: 'usecases', node: n })),
+    ...a.blocks.map(n => ({ type: 'architecture', node: n }))
+  ];
+  html += `<div class="section-block"><h2>${t('trace.heading')}</h2><p class="credits-note" style="margin-bottom:10px;">${t('trace.sub')}</p>`;
+  if (cols.length === 0){
+    html += `<p class="credits-note">${t('req.links_none_usecases')}<br>${t('req.links_none_blocks')}</p>`;
+  } else {
+    html += `<div class="trace-wrap"><table class="trace-table"><thead><tr><th class="trace-corner" rowspan="2"></th>`;
+    if (a.useCases.length) html += `<th class="trace-group uc" colspan="${a.useCases.length}">${t('trace.col_usecases')}</th>`;
+    if (a.blocks.length) html += `<th class="trace-group bl" colspan="${a.blocks.length}">${t('trace.col_blocks')}</th>`;
+    html += `</tr><tr>${cols.map(c => `<th class="trace-col ${c.type === 'usecases' ? 'uc' : 'bl'}" title="${escapeHTML(c.node.label)}"><span>${escapeHTML(c.node.label)}</span></th>`).join('')}</tr></thead><tbody>`;
+    a.rows.forEach(row => {
+      html += `<tr><th class="trace-row" title="${escapeHTML(row.req.title)}"><span class="req-code">${seReqCode(row.req)}</span> ${escapeHTML(row.req.title)}</th>`;
+      cols.forEach(c => {
+        const on = (c.type === 'usecases' ? row.uc : row.bl).has(c.node.id);
+        const attrs = isOwner ? ` data-trace-toggle="${row.req.id}|${c.type}|${c.node.id}" role="button" tabindex="0" aria-pressed="${on}" aria-label="${escapeHTML(seReqCode(row.req) + ' / ' + c.node.label)}"` : '';
+        html += `<td class="trace-cell ${c.type === 'usecases' ? 'uc' : 'bl'}${on ? ' on' : ''}${isOwner ? ' editable' : ''}"${attrs}>${on ? '●' : ''}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+// Link chips shown on each requirement in the Requirements tab.
+function renderReqLinkChips(req){
+  const names = (type) => {
+    const ids = new Set(seReqLinkIds(req, type));
+    return seTargets(type).filter(n => ids.has(n.id)).map(n => n.label);
+  };
+  const uc = names('usecases'), bl = names('architecture');
+  const chips = (list, icon, warnKey) => list.length
+    ? list.map(l => `<span class="chip">${icon} ${escapeHTML(l)}</span>`).join('')
+    : `<span class="chip chip-warn">${t(warnKey)}</span>`;
+  return `<div class="req-links card-row">${chips(uc, '🎭', 'req.warn_no_usecase')}${chips(bl, '▦', 'req.warn_no_block')}</div>`;
+}
+
+// Checkbox pickers inside the add/edit requirement form.
+function renderReqLinkPicker(req){
+  const group = (type, labelKey, emptyKey) => {
+    const targets = seTargets(type);
+    const selected = new Set(req ? seReqLinkIds(req, type) : []);
+    return `<fieldset class="req-link-group"><legend>${t(labelKey)}</legend>${
+      targets.length
+        ? targets.map(n => `<label class="req-link-opt"><input type="checkbox" name="link" value="${type}:${n.id}" ${selected.has(n.id) ? 'checked' : ''}> ${escapeHTML(n.label)}</label>`).join('')
+        : `<span class="credits-note">${t(emptyKey)}</span>`
+    }</fieldset>`;
+  };
+  return group('usecases', 'req.links_usecases', 'req.links_none_usecases') + group('architecture', 'req.links_blocks', 'req.links_none_blocks');
+}
+
 function renderRequirementsPanel(isOwner){
   const reqs = (project.project_requirements || []).slice().sort((a, b) => a.req_number - b.req_number);
   const statuses = ['created','implemented','verified','validated'];
@@ -2280,6 +2440,7 @@ function renderRequirementsPanel(isOwner){
         <div>
           <h4><span class="req-code">REQ-${String(r.req_number).padStart(3, '0')}</span> ${escapeHTML(r.title)}</h4>
           ${r.description ? `<p>${escapeHTML(r.description)}</p>` : ''}
+          ${renderReqLinkChips(r)}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           ${isOwner ? `
@@ -2303,6 +2464,7 @@ function renderRequirementsPanel(isOwner){
         <form id="reqForm" class="auth-form" data-editing="${editingReqId || ''}">
           <label>${t('project.goal_title')}<input type="text" required name="title" maxlength="80" value="${editingReq ? escapeHTML(editingReq.title) : ''}"></label>
           <label>${t('project.goal_desc')}<textarea name="description" rows="2" maxlength="300">${editingReq ? escapeHTML(editingReq.description || '') : ''}</textarea></label>
+          ${renderReqLinkPicker(editingReq)}
           <button class="btn btn-ghost btn-small" type="submit">${editingReqId ? t('common.save') : t('common.add')}</button>
           <p class="form-msg" id="reqMsg"></p>
         </form>
@@ -2403,6 +2565,12 @@ function wireEvents(){
   content.querySelectorAll('.tab-bar button').forEach(btn => btn.addEventListener('click', () => {
     activeTab = btn.dataset.tab;
     lastTabInGroup[activeGroup] = activeTab;
+    // Views that list diagram nodes (requirement links, matrix) must pick up diagram edits made since the last render.
+    if (seViewsStale && (activeTab === 'requirements' || activeTab === 'traceability')){
+      seViewsStale = false;
+      render();
+      return;
+    }
     content.querySelectorAll('.tab-bar button').forEach(b => b.classList.toggle('active', b === btn));
     content.querySelectorAll('.tab-panel').forEach(p => { p.hidden = p.dataset.panel !== activeTab; });
     maybeAutoFitActiveTab();
@@ -2532,7 +2700,8 @@ function wireEvents(){
     const msg = document.getElementById('reqMsg');
     const fd = new FormData(e.target);
     const editingId = e.target.dataset.editing;
-    const payload = { title: fd.get('title'), description: fd.get('description') || null };
+    const links = fd.getAll('link').map(v => { const i = v.indexOf(':'); return { t: v.slice(0, i), id: v.slice(i + 1) }; });
+    const payload = { title: fd.get('title'), description: fd.get('description') || null, links };
     let error;
     if (editingId){
       ({ error } = await supabaseClient.from('project_requirements').update(payload).eq('id', editingId));
@@ -2542,6 +2711,27 @@ function wireEvents(){
     if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
     editingReqId = null;
     loadProject();
+  });
+  // Traceability matrix: click (or Enter/Space on) a cell to link/unlink a requirement and a diagram node.
+  content.querySelectorAll('[data-trace-toggle]').forEach(cell => {
+    const toggle = async () => {
+      const [reqId, type, nodeId] = cell.dataset.traceToggle.split('|');
+      const req = (project.project_requirements || []).find(r => r.id === reqId);
+      if (!req) return;
+      const current = seCurrentLinks(req);
+      const exists = current.some(l => l.t === type && l.id === nodeId);
+      const links = exists ? current.filter(l => !(l.t === type && l.id === nodeId)) : [...current, { t: type, id: nodeId }];
+      const { error } = await supabaseClient.from('project_requirements').update({ links }).eq('id', reqId);
+      if (error){ alert(error.message); return; }
+      req.links = links;
+      const wrap = content.querySelector('.trace-wrap');
+      const left = wrap ? wrap.scrollLeft : 0;
+      render();
+      const wrapAfter = content.querySelector('.trace-wrap');
+      if (wrapAfter) wrapAfter.scrollLeft = left;
+    };
+    cell.addEventListener('click', toggle);
+    cell.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); toggle(); } });
   });
   content.querySelectorAll('[data-edit-req]').forEach(btn => btn.addEventListener('click', () => { editingReqId = btn.dataset.editReq; render(); }));
   content.querySelectorAll('[data-delete-req]').forEach(btn => btn.addEventListener('click', async () => {

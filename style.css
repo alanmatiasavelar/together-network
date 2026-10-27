@@ -1142,3 +1142,43 @@ summary:focus-visible,[tabindex]:focus-visible{
   padding:10px 20px;background:#FFF6E9;border-bottom:1px solid #F0DDB8;color:#8A5A18;font-size:14px;
 }
 .backlog-banner .backlog-status{font-size:13px;font-weight:500;}
+
+/* ---- systems engineering: traceability, coverage, requirement links ---- */
+.chip.chip-warn{background:#FFF6E9;border-color:#F0DDB8;color:#8A5A18;}
+.req-links{margin-top:8px;gap:6px;}
+.req-link-group{border:1px solid var(--line);border-radius:10px;padding:8px 12px 10px;margin:0;}
+.req-link-group legend{font-size:12.5px;font-weight:600;color:var(--ink-soft);padding:0 6px;}
+.req-link-opt{display:inline-flex;align-items:center;gap:6px;margin:4px 14px 4px 0;font-size:13.5px;font-weight:400;}
+.req-link-opt input{width:auto;}
+
+.se-status-bar{display:flex;height:10px;border-radius:100px;overflow:hidden;background:var(--mist);gap:2px;}
+.se-seg.created{background:#B8C2CA;}
+.se-seg.implemented{background:var(--orange);}
+.se-seg.verified{background:var(--blue);}
+.se-seg.validated{background:#2E9A5B;}
+.se-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;}
+.se-dot.created{background:#B8C2CA;}
+.se-dot.implemented{background:var(--orange);}
+.se-dot.verified{background:var(--blue);}
+.se-dot.validated{background:#2E9A5B;}
+
+.se-gap{margin-bottom:14px;}
+.se-gap h4{font-size:14px;margin-bottom:6px;display:flex;align-items:center;gap:8px;}
+
+.trace-wrap{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel);}
+.trace-table{border-collapse:separate;border-spacing:0;font-size:13px;}
+.trace-table th,.trace-table td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);}
+.trace-table thead th{background:var(--mist);}
+.trace-corner{min-width:220px;}
+.trace-group{padding:6px 10px;font-size:12px;font-weight:700;text-align:center;letter-spacing:.03em;}
+.trace-group.uc{color:#5B3FA0;}
+.trace-group.bl{color:var(--blue-deep);}
+.trace-col{height:130px;width:38px;min-width:38px;vertical-align:bottom;padding:6px 0;}
+.trace-col span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);max-height:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:12px;}
+.trace-row{position:sticky;left:0;z-index:1;background:var(--panel);text-align:left;font-weight:500;padding:8px 12px;min-width:220px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.trace-cell{width:38px;min-width:38px;height:38px;text-align:center;font-size:15px;}
+.trace-cell.uc.on{color:#5B3FA0;background:#F3EEFB;}
+.trace-cell.bl.on{color:var(--blue-deep);background:#EAF3FB;}
+.trace-cell.editable{cursor:pointer;}
+.trace-cell.editable:hover{background:#F6F1EA;}
+.trace-cell.editable:focus-visible{outline:2px solid var(--blue);outline-offset:-2px;}
