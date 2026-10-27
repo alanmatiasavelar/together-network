@@ -70,7 +70,7 @@ const content = document.getElementById('pageContent');
 const TAB_GROUPS = {
   general: ['overview', 'feed', 'goals', 'tasks', 'polls', 'events', 'links', 'ai'],
   pm: ['schedule', 'wbs', 'team', 'costs', 'stakeholders', 'risks'],
-  se: ['requirements', 'usecases', 'architecture', 'traceability']
+  se: ['requirements', 'usecases', 'context', 'architecture', 'sequence', 'states', 'activity', 'traceability']
 };
 const VALID_TABS = Object.values(TAB_GROUPS).flat();
 const ADMIN_EMAIL = 'aolbr_mail@yahoo.com.br';
@@ -134,7 +134,7 @@ function maybeAutoFitActiveTab(){
     wbsFitApplied = true;
     const fit = computeFitZoom('wbsScroll', true);
     if (fit !== null && fit < wbsZoom){ wbsZoom = fit; render(); }
-  } else if ((activeTab === 'usecases' || activeTab === 'architecture') && !diagramFitApplied[activeTab]){
+  } else if (DIAGRAM_TYPES.includes(activeTab) && !diagramFitApplied[activeTab]){
     diagramFitApplied[activeTab] = true;
     const fit = computeFitZoom('diagramScroll-' + activeTab, true);
     if (fit !== null && fit < diagramZoom[activeTab]){ diagramZoom[activeTab] = fit; render(); }
@@ -237,6 +237,11 @@ async function loadProject(){
     return;
   }
   project = data;
+  const { data: verRows, error: verErr } = await supabaseClient.from('project_requirement_verifications')
+    .select('*').eq('project_id', projectId)
+    .order('performed_on', { ascending: false }).order('created_at', { ascending: false });
+  // Newest first (also enforced here so the 'latest' record never depends on the query's ordering).
+  project.verifications = verErr ? [] : (verRows || []).slice().sort((x, y) => String(y.performed_on).localeCompare(String(x.performed_on)) || String(y.created_at).localeCompare(String(x.created_at)));
   await loadFeedPosts();
   if (currentUser){
     const { data: profileRow } = await supabaseClient.from('profiles').select('cv_url').eq('id', currentUser.id).single();
@@ -391,8 +396,7 @@ function render(){
     <div class="tab-panel" data-panel="risks" ${activeTab !== 'risks' ? 'hidden' : ''}>${renderRisksPanel()}</div>
     <div class="tab-panel" data-panel="links" ${activeTab !== 'links' ? 'hidden' : ''}>${renderLinksPanel()}</div>
     <div class="tab-panel" data-panel="ai" ${activeTab !== 'ai' ? 'hidden' : ''}>${renderAiPanel()}</div>
-    <div class="tab-panel" data-panel="usecases" ${activeTab !== 'usecases' ? 'hidden' : ''}>${renderDiagramPanel('usecases')}</div>
-    <div class="tab-panel" data-panel="architecture" ${activeTab !== 'architecture' ? 'hidden' : ''}>${renderDiagramPanel('architecture')}</div>
+    ${DIAGRAM_TYPES.map(ty => `<div class="tab-panel" data-panel="${ty}" ${activeTab !== ty ? 'hidden' : ''}>${renderDiagramPanel(ty)}</div>`).join('')}
     <div class="tab-panel" data-panel="traceability" ${activeTab !== 'traceability' ? 'hidden' : ''}>${renderTraceabilityPanel(isOwner)}</div>
   `;
 
@@ -1840,31 +1844,46 @@ function autoGrowTextarea(el){
 // working state so switching tabs never loses unsaved edits, and nothing
 // is written to the database until the user clicks Save.
 // ---------------------------------------------------------------------------
-const DIAGRAM_CANVAS_W = 1200, DIAGRAM_CANVAS_H = 700;
+const DIAGRAM_CANVAS_W = 1200;
+const diagramCanvasH = (type) => type === 'sequence' ? 1000 : 700; // sequence diagrams grow downward with each message
+const DIAGRAM_TYPES = ['usecases', 'architecture', 'context', 'sequence', 'states', 'activity'];
+const diagramPerType = (make) => Object.fromEntries(DIAGRAM_TYPES.map(ty => [ty, make(ty)]));
 const DIAGRAM_SHAPE_SIZE = {
   actor: { w: 70, h: 96 },
   usecase: { w: 170, h: 74 },
-  block: { w: 190, h: 96 }
+  block: { w: 190, h: 96 },
+  system: { w: 230, h: 110 },
+  external: { w: 160, h: 64 },
+  state: { w: 160, h: 76 },
+  initial: { w: 30, h: 30 },
+  final: { w: 34, h: 34 },
+  action: { w: 160, h: 56 },
+  decision: { w: 76, h: 76 },
+  lifeline: { w: 140, h: 44 }
 };
+// Shapes whose rename dialog also asks for a short description (shown inside the shape).
+const DIAGRAM_DESC_KINDS = new Set(['block', 'system', 'state']);
+const diagramPaletteItem = (kind) => ({ kind, label: () => t('project.diagram_add_' + kind), defaultLabel: () => t('project.diagram_default_' + kind) });
 const DIAGRAM_PALETTES = {
-  usecases: [
-    { kind: 'actor', label: () => t('project.diagram_add_actor'), defaultLabel: () => t('project.diagram_default_actor') },
-    { kind: 'usecase', label: () => t('project.diagram_add_usecase'), defaultLabel: () => t('project.diagram_default_usecase') }
-  ],
-  architecture: [
-    { kind: 'block', label: () => t('project.diagram_add_block'), defaultLabel: () => t('project.diagram_default_block') }
-  ]
+  usecases: ['actor', 'usecase'].map(diagramPaletteItem),
+  architecture: ['block'].map(diagramPaletteItem),
+  context: ['system', 'external', 'actor'].map(diagramPaletteItem),
+  sequence: ['lifeline'].map(diagramPaletteItem),
+  states: ['state', 'initial', 'final'].map(diagramPaletteItem),
+  activity: ['action', 'decision', 'initial', 'final'].map(diagramPaletteItem)
 };
+// What a shape is called when it has no label of its own (start/end markers, unlabeled decisions).
+const diagramNodeName = (node) => node ? (node.label || t('project.diagram_add_' + node.kind)) : '?';
 
-let diagramState = { usecases: null, architecture: null };
-let diagramDirty = { usecases: false, architecture: false };
-let diagramMode = { usecases: 'idle', architecture: 'idle' };
-let diagramConnectFrom = { usecases: null, architecture: null };
-let diagramSelected = { usecases: null, architecture: null };
-let diagramZoom = { usecases: 1, architecture: 1 };
-let diagramFitApplied = { usecases: false, architecture: false };
-let diagramLinkKind = { usecases: 'association', architecture: 'association' };
-let diagramHistory = { usecases: { undo: [], redo: [] }, architecture: { undo: [], redo: [] } };
+let diagramState = diagramPerType(() => null);
+let diagramDirty = diagramPerType(() => false);
+let diagramMode = diagramPerType(() => 'idle');
+let diagramConnectFrom = diagramPerType(() => null);
+let diagramSelected = diagramPerType(() => null);
+let diagramZoom = diagramPerType(() => 1);
+let diagramFitApplied = diagramPerType(() => false);
+let diagramLinkKind = diagramPerType(() => null); // filled in below once the connection kinds are known
+let diagramHistory = diagramPerType(() => ({ undo: [], redo: [] }));
 
 // Connection types. `end`/`start` name the marker drawn at the target/source end;
 // `auto` is the stereotype shown when the connection has no custom label.
@@ -1875,12 +1894,21 @@ const DIAGRAM_EDGE_KINDS = {
   generalization: { end: 'triangle',  start: null },
   flow:           { end: 'arrow',     start: null },
   dependency:     { end: 'arrowOpen', start: null, dash: true },
-  composition:    { end: null,        start: 'diamond' }
+  composition:    { end: null,        start: 'diamond' },
+  transition:     { end: 'arrow',     start: null },
+  sync:           { end: 'arrow',     start: null },
+  async:          { end: 'arrowOpen', start: null },
+  return:         { end: 'arrowOpen', start: null, dash: true }
 };
 const DIAGRAM_EDGE_KINDS_BY_TYPE = {
   usecases: ['association', 'include', 'extend', 'generalization'],
-  architecture: ['association', 'flow', 'dependency', 'composition', 'generalization']
+  architecture: ['association', 'flow', 'dependency', 'composition', 'generalization'],
+  context: ['flow', 'association', 'dependency'],
+  sequence: ['sync', 'async', 'return'],
+  states: ['transition'],
+  activity: ['flow']
 };
+DIAGRAM_TYPES.forEach(ty => { diagramLinkKind[ty] = DIAGRAM_EDGE_KINDS_BY_TYPE[ty][0]; });
 const diagramEdgeKind = (edge) => DIAGRAM_EDGE_KINDS[edge.kind] ? edge.kind : 'association';
 
 // Undo/redo: whole-diagram snapshots taken just before each change. A snapshot
@@ -1899,7 +1927,10 @@ function diagramRestore(type, snap){
   const parsed = JSON.parse(snap);
   diagramState[type].nodes = parsed.nodes || [];
   diagramState[type].edges = parsed.edges || [];
-  diagramSelected[type] = null;
+  // Keep the selection when that shape/line still exists, so undoing a text edit doesn't dismiss its editor.
+  const sel = diagramSelected[type];
+  const stillThere = sel && (sel.kind === 'node' ? diagramState[type].nodes.some(n => n.id === sel.id) : diagramState[type].edges.some(e => e.id === sel.id));
+  diagramSelected[type] = stillThere ? sel : null;
   diagramMode[type] = 'idle';
   diagramConnectFrom[type] = null;
   diagramDirty[type] = true;
@@ -1924,8 +1955,7 @@ function diagramRedo(type){
 const ZOOM_STATE = {
   gantt: { get: () => ganttZoom, set: v => { ganttZoom = v; } },
   wbs: { get: () => wbsZoom, set: v => { wbsZoom = v; } },
-  usecases: { get: () => diagramZoom.usecases, set: v => { diagramZoom.usecases = v; } },
-  architecture: { get: () => diagramZoom.architecture, set: v => { diagramZoom.architecture = v; } }
+  ...diagramPerType(ty => ({ get: () => diagramZoom[ty], set: v => { diagramZoom[ty] = v; } }))
 };
 
 function diagramNodeById(type, id){
@@ -1954,6 +1984,10 @@ function diagramEdgeGeometry(type, edge){
   const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
   if (!from || !to) return null;
   const fc = diagramNodeCenter(from), tc = diagramNodeCenter(to);
+  if (type === 'sequence'){
+    const y = edge.y == null ? 110 : edge.y;
+    return { p1: { x: fc.cx, y }, p2: { x: tc.cx, y }, mid: { x: (fc.cx + tc.cx) / 2, y } };
+  }
   let p1 = diagramClipToBox(from, tc.cx, tc.cy);
   let p2 = diagramClipToBox(to, fc.cx, fc.cy);
   const siblings = state.edges.filter(e => (e.from === edge.from && e.to === edge.to) || (e.from === edge.to && e.to === edge.from));
@@ -1986,6 +2020,57 @@ function diagramShapeSvg(node, isSelected){
     return `
       <ellipse class="${cls}" cx="${size.w/2}" cy="${size.h/2}" rx="${size.w/2-2}" ry="${size.h/2-2}"></ellipse>
       <text class="diagram-label" x="${size.w/2}" y="${size.h/2+5}" text-anchor="middle">${escapeHTML(node.label)}</text>
+      ${ucHasDetail(node) ? `<text class="diagram-detail-mark" x="${size.w-38}" y="21" text-anchor="middle">≡</text>` : ''}
+    `;
+  }
+  if (node.kind === 'system'){
+    return `
+      <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="16"></rect>
+      <text class="diagram-block-stereotype" x="${size.w/2}" y="22" text-anchor="middle">«system»</text>
+      <text class="diagram-label" x="${size.w/2}" y="${node.sublabel ? 52 : 60}" text-anchor="middle">${escapeHTML(node.label)}</text>
+      ${node.sublabel ? `<text class="diagram-block-desc" x="${size.w/2}" y="76" text-anchor="middle">${escapeHTML(node.sublabel)}</text>` : ''}
+    `;
+  }
+  if (node.kind === 'external'){
+    return `
+      <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="2"></rect>
+      <text class="diagram-block-stereotype" x="${size.w/2}" y="18" text-anchor="middle">«external»</text>
+      <text class="diagram-label" x="${size.w/2}" y="42" text-anchor="middle">${escapeHTML(node.label)}</text>
+    `;
+  }
+  if (node.kind === 'state'){
+    return `
+      <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="20"></rect>
+      <text class="diagram-label" x="${size.w/2}" y="${node.sublabel ? 26 : size.h/2+5}" text-anchor="middle">${escapeHTML(node.label)}</text>
+      ${node.sublabel ? `<line class="diagram-block-divider" x1="12" y1="36" x2="${size.w-12}" y2="36"></line><text class="diagram-block-desc" x="${size.w/2}" y="54" text-anchor="middle">${escapeHTML(node.sublabel)}</text>` : ''}
+    `;
+  }
+  if (node.kind === 'initial'){
+    return `<circle class="${cls} diagram-fill-dark" cx="${size.w/2}" cy="${size.h/2}" r="${size.h/2-2}"></circle>`;
+  }
+  if (node.kind === 'final'){
+    return `
+      <circle class="${cls}" cx="${size.w/2}" cy="${size.h/2}" r="${size.h/2-2}"></circle>
+      <circle class="diagram-shape diagram-fill-dark" cx="${size.w/2}" cy="${size.h/2}" r="${size.h/2-8}"></circle>
+    `;
+  }
+  if (node.kind === 'action'){
+    return `
+      <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="${size.h/2-2}"></rect>
+      <text class="diagram-label" x="${size.w/2}" y="${size.h/2+5}" text-anchor="middle">${escapeHTML(node.label)}</text>
+    `;
+  }
+  if (node.kind === 'decision'){
+    return `
+      <polygon class="${cls}" points="${size.w/2},2 ${size.w-2},${size.h/2} ${size.w/2},${size.h-2} 2,${size.h/2}"></polygon>
+      <text class="diagram-label" x="${size.w/2}" y="${size.h+14}" text-anchor="middle">${escapeHTML(node.label)}</text>
+    `;
+  }
+  if (node.kind === 'lifeline'){
+    // The dashed line below the header is drawn in its own layer (see buildDiagramSvgHTML) so messages sit on top of it.
+    return `
+      <rect class="${cls}" x="1" y="1" width="${size.w-2}" height="${size.h-2}" rx="4"></rect>
+      <text class="diagram-label" x="${size.w/2}" y="${size.h/2+5}" text-anchor="middle">${escapeHTML(node.label)}</text>
     `;
   }
   // block (SysML BDD)
@@ -2003,12 +2088,22 @@ function buildDiagramSvgHTML(type, zoomOverride){
   const selected = diagramSelected[type];
   const zoom = zoomOverride || diagramZoom[type] || 1;
   let edgesHtml = '';
+  let seqRank = null;
+  if (type === 'sequence'){
+    // Dashed lifelines go first so messages are drawn over them; messages are numbered top to bottom.
+    state.nodes.forEach(node => {
+      const c = diagramNodeCenter(node);
+      edgesHtml += `<line class="diagram-lifeline" data-lifeline-for="${node.id}" x1="${c.cx}" y1="${node.y + DIAGRAM_SHAPE_SIZE.lifeline.h}" x2="${c.cx}" y2="${diagramCanvasH('sequence') - 12}"></line>`;
+    });
+    seqRank = new Map(state.edges.filter(e => diagramNodeById(type, e.from) && diagramNodeById(type, e.to))
+      .sort((a, b) => (a.y == null ? 110 : a.y) - (b.y == null ? 110 : b.y)).map((e, i) => [e.id, i + 1]));
+  }
   state.edges.forEach(edge => {
     const geo = diagramEdgeGeometry(type, edge);
     if (!geo) return;
     const kind = diagramEdgeKind(edge), def = DIAGRAM_EDGE_KINDS[kind];
     const isSel = selected && selected.kind === 'edge' && selected.id === edge.id;
-    const text = edge.label || def.auto || '';
+    const text = (seqRank ? seqRank.get(edge.id) + '. ' : '') + (edge.label || def.auto || '');
     const coords = `x1="${geo.p1.x}" y1="${geo.p1.y}" x2="${geo.p2.x}" y2="${geo.p2.y}"`;
     edgesHtml += `<g class="diagram-edge-group">
       <line class="diagram-edge-hit" data-edge-id="${edge.id}" ${coords}></line>
@@ -2023,7 +2118,7 @@ function buildDiagramSvgHTML(type, zoomOverride){
     nodesHtml += `<g class="diagram-node" data-node-id="${node.id}" transform="translate(${node.x},${node.y})">${diagramShapeSvg(node, isSel)}</g>`;
   });
   return `
-    <svg id="diagramSvg-${type}" class="diagram-svg" viewBox="0 0 ${DIAGRAM_CANVAS_W} ${DIAGRAM_CANVAS_H}" width="${DIAGRAM_CANVAS_W * zoom}" height="${DIAGRAM_CANVAS_H * zoom}" data-diagram-type="${type}">
+    <svg id="diagramSvg-${type}" class="diagram-svg" viewBox="0 0 ${DIAGRAM_CANVAS_W} ${diagramCanvasH(type)}" width="${DIAGRAM_CANVAS_W * zoom}" height="${diagramCanvasH(type) * zoom}" data-diagram-type="${type}">
       <defs>
         <marker id="diagramMarker-${type}-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M0,0 L8,3.5 L0,7 Z" fill="#8a97a3"></path>
@@ -2056,7 +2151,10 @@ const DIAGRAM_EXPORT_CSS = `
   .diagram-block-divider{stroke:#DFE5E9;stroke-width:1;}
   .diagram-block-desc{font-family:'Inter',Arial,sans-serif;font-size:10px;fill:#5A6672;}
   .diagram-edge{stroke:#8a97a3;stroke-width:1.5;}
-  .diagram-edge-include,.diagram-edge-extend,.diagram-edge-dependency{stroke-dasharray:6 4;}
+  .diagram-edge-include,.diagram-edge-extend,.diagram-edge-dependency,.diagram-edge-return{stroke-dasharray:6 4;}
+  .diagram-lifeline{stroke:#8a97a3;stroke-width:1.2;stroke-dasharray:5 4;}
+  .diagram-detail-mark{font-family:Arial,sans-serif;font-size:14px;font-weight:700;fill:#3E8FD0;}
+  .diagram-fill-dark{fill:#2C3742;}
   .diagram-edge-label{font-family:'Inter',Arial,sans-serif;font-size:11px;font-weight:500;fill:#2C3742;paint-order:stroke;stroke:#ffffff;stroke-width:4px;stroke-linejoin:round;}
 `;
 
@@ -2076,7 +2174,7 @@ function exportDiagramSvg(type){
 
   const withStyle = svgMarkup
     .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
-    .replace('</defs>', `</defs><style>${DIAGRAM_EXPORT_CSS}</style><rect width="${DIAGRAM_CANVAS_W}" height="${DIAGRAM_CANVAS_H}" fill="#ffffff"></rect>`);
+    .replace('</defs>', `</defs><style>${DIAGRAM_EXPORT_CSS}</style><rect width="${DIAGRAM_CANVAS_W}" height="${diagramCanvasH(type)}" fill="#ffffff"></rect>`);
   const src = '<?xml version="1.0" standalone="no"?>\r\n' + withStyle;
   const blob = new Blob([src], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -2112,10 +2210,10 @@ function renderDiagramPanel(type){
     <div class="diagram-toolbar">
       ${palette.map(p => `<button class="btn btn-ghost btn-small" data-diagram-add="${p.kind}" data-diagram-type="${type}" type="button">+ ${p.label()}</button>`).join('')}
       <button class="btn btn-ghost btn-small" data-diagram-connect data-diagram-type="${type}" type="button">🔗 ${t('project.diagram_connect')}</button>
-      <label class="diagram-linktype" title="${t('project.diagram_link_type')}">
+      ${DIAGRAM_EDGE_KINDS_BY_TYPE[type].length > 1 ? `<label class="diagram-linktype" title="${t('project.diagram_link_type')}">
         <span>${t('project.diagram_link_type')}</span>
         <select data-diagram-linktype data-diagram-type="${type}">${diagramKindOptions(type, diagramLinkKind[type])}</select>
-      </label>
+      </label>` : ''}
       <button class="btn btn-ghost btn-small" data-diagram-rename data-diagram-type="${type}" type="button">✎ ${t('project.diagram_rename')}</button>
       <button class="btn btn-ghost btn-small" data-diagram-undo data-diagram-type="${type}" type="button" title="${t('project.diagram_undo')} (Ctrl+Z)" aria-label="${t('project.diagram_undo')}">↶</button>
       <button class="btn btn-ghost btn-small" data-diagram-redo data-diagram-type="${type}" type="button" title="${t('project.diagram_redo')} (Ctrl+Y)" aria-label="${t('project.diagram_redo')}">↷</button>
@@ -2125,15 +2223,109 @@ function renderDiagramPanel(type){
       <button class="btn btn-primary btn-small" data-diagram-save data-diagram-type="${type}" type="button">${t('common.save')}</button>
     </div>
     <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')} ${t('project.diagram_hint_edges')}</p>
-    <div class="diagram-inspector" id="diagramInspector-${type}" hidden></div>
+    ${type === 'architecture' ? `<div class="se-ai-bar"><button class="btn btn-ghost btn-small" type="button" data-seai-run data-scope="architecture" data-task="suggest_architecture" ${seAi.status === 'loading' ? 'disabled' : ''}>✨ ${t('seai.arch')}</button></div>${renderSeAiPanel('architecture')}` : ''}
+    <div class="diagram-inspector" id="diagramInspector-${type}"><span class="credits-note">${t('project.diagram_inspector_hint')}</span></div>
     ${renderChartToolbar(type, diagramZoom[type], 'svg')}
     <div class="diagram-canvas-wrap" id="diagramScroll-${type}">${buildDiagramSvgHTML(type)}</div>
+    ${type === 'usecases' ? '<div class="uc-details" id="ucDetails"></div>' : ''}
   `;
 }
 
 let seViewsStale = false;
 let diagramDrag = null; // { type, nodeId, dx, dy, checkpointed } while a shape is being dragged
-window.addEventListener('mouseup', () => { diagramDrag = null; });
+window.addEventListener('mouseup', () => {
+  const finished = diagramDrag;
+  diagramDrag = null;
+  // After reordering messages, redraw so their numbers follow the new order.
+  if (finished && finished.edgeId && finished.checkpointed) refreshDiagramCanvas(finished.type);
+});
+
+// ---- Use case details: a short specification stored on the shape itself (node.detail), saved with the diagram ----
+const UC_DETAIL_FIELDS = [['desc', 'uc.desc', 2], ['pre', 'uc.pre', 2], ['steps', 'uc.steps', 6], ['alts', 'uc.alts', 3], ['post', 'uc.post', 2]];
+const ucHasDetail = (node) => !!node.detail && UC_DETAIL_FIELDS.some(([k]) => String(node.detail[k] || '').trim());
+// Main-flow lines, without any "1." / "-" bullets the author typed.
+const ucSteps = (node) => String((node.detail && node.detail.steps) || '').split('\n')
+  .map(l => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+let ucNotice = '';
+
+function refreshUseCaseDetails(){
+  const box = document.getElementById('ucDetails');
+  if (!box) return;
+  const sel = diagramSelected.usecases;
+  const node = sel && sel.kind === 'node' ? diagramNodeById('usecases', sel.id) : null;
+  if (!node || node.kind !== 'usecase'){
+    box.innerHTML = `<h3>${t('uc.heading')}</h3><p class="credits-note">${t('uc.hint')}</p>`;
+    return;
+  }
+  const isOwner = currentUser && project.owner_id === currentUser.id;
+  box.innerHTML = `
+    <h3>${t('uc.heading')}: ${escapeHTML(node.label)}</h3>
+    <div class="uc-grid">${UC_DETAIL_FIELDS.map(([k, key, rows]) => `
+      <label class="${k === 'steps' ? 'wide' : ''}">${t(key)}<textarea data-uc-field="${k}" rows="${rows}" maxlength="1500">${escapeHTML((node.detail && node.detail[k]) || '')}</textarea></label>`).join('')}
+    </div>
+    <div class="uc-actions">
+      <button class="btn btn-ghost btn-small" type="button" data-uc-ai>✨ ${t('seai.draft')}</button>
+      ${isOwner ? `<button class="btn btn-ghost btn-small" type="button" data-uc-make-reqs>${t('uc.make_reqs')}</button>` : ''}
+      <span class="form-msg ${ucNotice ? 'ok' : ''}" id="ucMsg" role="status">${escapeHTML(ucNotice)}</span>
+    </div>`;
+  ucNotice = '';
+  box.querySelectorAll('[data-uc-field]').forEach(ta => {
+    ta.addEventListener('focus', () => diagramCheckpoint('usecases'));
+    ta.addEventListener('input', () => {
+      node.detail = node.detail || {};
+      node.detail[ta.dataset.ucField] = ta.value;
+      diagramDirty.usecases = true;
+      updateDiagramDirtyNote('usecases');
+      refreshDiagramCanvas('usecases', true); // redraws the "has details" mark; skipInspector keeps this textarea focused
+    });
+  });
+  const aiBtn = box.querySelector('[data-uc-ai]');
+  if (aiBtn) aiBtn.addEventListener('click', () => ucDraftWithAi(node, aiBtn));
+  const makeBtn = box.querySelector('[data-uc-make-reqs]');
+  if (makeBtn) makeBtn.addEventListener('click', () => ucCreateRequirements(node, makeBtn));
+}
+
+// Fills the details form from an AI draft (undoable). Asks first if there is already text to lose.
+async function ucDraftWithAi(node, btn){
+  const msg = document.getElementById('ucMsg');
+  if (ucHasDetail(node) && !confirm(t('seai.replace'))) return;
+  btn.disabled = true;
+  msg.textContent = '✨ ' + t('seai.working'); msg.className = 'form-msg';
+  try {
+    const d = await seAssistCall('draft_use_case', { name: node.label, description: (node.detail && node.detail.desc) || '' });
+    diagramCheckpoint('usecases');
+    node.detail = {
+      desc: d.description, pre: d.preconditions, steps: d.steps.map((x, i) => (i + 1) + '. ' + x).join('\n'),
+      alts: d.alternates.join('\n'), post: d.postconditions
+    };
+    diagramDirty.usecases = true;
+    updateDiagramDirtyNote('usecases');
+    ucNotice = t('seai.draft_done');
+    refreshDiagramCanvas('usecases'); // redraws the shape's details mark and the form
+  } catch (err) {
+    msg.textContent = err.message; msg.className = 'form-msg error';
+    btn.disabled = false;
+  }
+}
+
+// One requirement per main-flow step, each linked back to the use case.
+async function ucCreateRequirements(node, btn){
+  const msg = document.getElementById('ucMsg');
+  const steps = ucSteps(node).slice(0, 20);
+  if (!steps.length){ msg.textContent = t('uc.no_steps'); msg.className = 'form-msg error'; return; }
+  if (!confirm(t('uc.make_confirm').replace('{n}', steps.length))) return;
+  btn.disabled = true;
+  for (let i = 0; i < steps.length; i++){
+    const { error } = await supabaseClient.from('project_requirements').insert({
+      project_id: projectId, title: steps[i].slice(0, 80),
+      description: `${t('uc.from')} "${node.label}", ${t('uc.step')} ${i + 1}`.slice(0, 300),
+      links: [{ t: 'usecases', id: node.id }]
+    });
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; btn.disabled = false; return; }
+  }
+  ucNotice = t('uc.created') + (diagramDirty.usecases ? ' ' + t('uc.created_unsaved') : '');
+  await loadProject();
+}
 
 function diagramKindOptions(type, selectedKind){
   return DIAGRAM_EDGE_KINDS_BY_TYPE[type].map(k => `<option value="${k}" ${k === selectedKind ? 'selected' : ''}>${t('project.edge_' + k)}</option>`).join('');
@@ -2149,20 +2341,34 @@ function refreshDiagramChrome(type, skipInspector){
   if (undoBtn) undoBtn.disabled = h.undo.length === 0;
   if (redoBtn) redoBtn.disabled = h.redo.length === 0;
   if (skipInspector) return;
+  if (type === 'usecases') refreshUseCaseDetails();
   const box = document.getElementById('diagramInspector-' + type);
   if (!box) return;
   const sel = diagramSelected[type];
   const edge = sel && sel.kind === 'edge' ? diagramState[type].edges.find(e => e.id === sel.id) : null;
-  if (!edge){ box.hidden = true; box.innerHTML = ''; return; }
+  // Always visible (with a hint) so selecting a line never shifts the canvas under the pointer mid-gesture.
+  box.classList.toggle('is-idle', !edge);
+  if (!edge){ box.hidden = false; box.innerHTML = '<span class="credits-note">' + t('project.diagram_inspector_hint') + '</span>'; return; }
   const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
   const kind = diagramEdgeKind(edge);
   box.hidden = false;
   box.innerHTML = `
-    <span class="diagram-inspector-title">${escapeHTML(from ? from.label : '?')} → ${escapeHTML(to ? to.label : '?')}</span>
+    <span class="diagram-inspector-title">${escapeHTML(diagramNodeName(from))} → ${escapeHTML(diagramNodeName(to))}</span>
     <label>${t('project.edge_type')}<select data-edge-kind>${diagramKindOptions(type, kind)}</select></label>
     <label>${t('project.edge_label')}<input type="text" data-edge-label maxlength="40" value="${escapeHTML(edge.label || '')}" placeholder="${escapeHTML(DIAGRAM_EDGE_KINDS[kind].auto || t('project.edge_label_ph'))}"></label>
     <button class="btn btn-ghost btn-small" data-edge-reverse type="button">⇄ ${t('project.edge_reverse')}</button>
+    ${type === 'sequence' ? `<button class="btn btn-ghost btn-small" data-edge-up type="button" aria-label="${t('project.edge_move_up')}" title="${t('project.edge_move_up')}">▲</button><button class="btn btn-ghost btn-small" data-edge-down type="button" aria-label="${t('project.edge_move_down')}" title="${t('project.edge_move_down')}">▼</button>` : ''}
   `;
+  if (type === 'sequence'){
+    const shift = (dy) => () => {
+      diagramCheckpoint(type);
+      edge.y = Math.max(90, Math.min(diagramCanvasH(type) - 30, (edge.y == null ? 110 : edge.y) + dy));
+      markDirty();
+      refreshDiagramCanvas(type);
+    };
+    box.querySelector('[data-edge-up]').addEventListener('click', shift(-30));
+    box.querySelector('[data-edge-down]').addEventListener('click', shift(30));
+  }
   const markDirty = () => { diagramDirty[type] = true; updateDiagramDirtyNote(type); };
   box.querySelector('[data-edge-kind]').addEventListener('change', (e) => {
     diagramCheckpoint(type);
@@ -2207,7 +2413,7 @@ function renameDiagramNode(type, nodeId){
   if (!node) return;
   const next = prompt(t('project.diagram_rename_prompt'), node.label);
   let desc = null;
-  if (node.kind === 'block' && next !== null) desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
+  if (DIAGRAM_DESC_KINDS.has(node.kind) && next !== null) desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
   const labelChanged = next !== null && next.trim() && next.trim() !== node.label;
   const descChanged = desc !== null && desc.trim() !== (node.sublabel || '');
   if (labelChanged || descChanged) diagramCheckpoint(type);
@@ -2231,6 +2437,10 @@ function wireDiagramCanvasInteractions(type){
   }
 
   function moveConnectedEdges(nodeId){
+    if (type === 'sequence'){
+      const n = diagramNodeById(type, nodeId), life = svg.querySelector('[data-lifeline-for="' + nodeId + '"]');
+      if (n && life){ const c = diagramNodeCenter(n); life.setAttribute('x1', c.cx); life.setAttribute('x2', c.cx); }
+    }
     state.edges.forEach(edge => {
       if (edge.from !== nodeId && edge.to !== nodeId) return;
       const geo = diagramEdgeGeometry(type, edge);
@@ -2252,6 +2462,7 @@ function wireDiagramCanvasInteractions(type){
         if (diagramConnectFrom[type] && diagramConnectFrom[type] !== nodeId){
           diagramCheckpoint(type);
           const edge = { id: 'e' + Math.random().toString(36).slice(2,9), from: diagramConnectFrom[type], to: nodeId, kind: diagramLinkKind[type] };
+          if (type === 'sequence') edge.y = Math.min(diagramCanvasH('sequence') - 40, Math.max(70, ...state.edges.map(e => e.y == null ? 110 : e.y)) + 50);
           state.edges.push(edge);
           diagramSelected[type] = { kind: 'edge', id: edge.id }; // so its label can be typed straight away
           markDirty();
@@ -2278,14 +2489,39 @@ function wireDiagramCanvasInteractions(type){
     });
   });
 
+  if (type === 'sequence'){
+    // Messages can be dragged up and down to reorder them.
+    svg.querySelectorAll('.diagram-edge, .diagram-edge-hit').forEach(line => line.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      const edge = state.edges.find(x => x.id === line.dataset.edgeId);
+      if (!edge) return;
+      diagramSelected[type] = { kind: 'edge', id: edge.id };
+      diagramDrag = { type, edgeId: edge.id, dy: toSvgPoint(e).y - (edge.y == null ? 110 : edge.y), checkpointed: false };
+      refreshDiagramCanvas(type);
+    }));
+  }
+
   svg.addEventListener('mousemove', (e) => {
     const drag = diagramDrag;
     if (!drag || drag.type !== type) return;
+    if (drag.edgeId){
+      const edge = state.edges.find(x => x.id === drag.edgeId);
+      if (!edge) return;
+      const ny = Math.max(90, Math.min(diagramCanvasH(type) - 30, Math.round(toSvgPoint(e).y - drag.dy)));
+      if (ny === edge.y) return;
+      if (!drag.checkpointed){ diagramCheckpoint(type); drag.checkpointed = true; refreshDiagramChrome(type, true); }
+      edge.y = ny; markDirty();
+      const geo = diagramEdgeGeometry(type, edge);
+      svg.querySelectorAll('[data-edge-id="' + edge.id + '"]').forEach(line => { line.setAttribute('y1', geo.p1.y); line.setAttribute('y2', geo.p2.y); });
+      const label = svg.querySelector('[data-edge-label-for="' + edge.id + '"]');
+      if (label) label.setAttribute('y', geo.mid.y - 5);
+      return;
+    }
     const p = toSvgPoint(e);
     const node = diagramNodeById(type, drag.nodeId);
     if (!node) return;
     const nx = Math.max(0, Math.min(DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[node.kind].w, p.x - drag.dx));
-    const ny = Math.max(0, Math.min(DIAGRAM_CANVAS_H - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - drag.dy));
+    const ny = type === 'sequence' ? node.y : Math.max(0, Math.min(diagramCanvasH(type) - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - drag.dy)); // participants only slide sideways
     if (nx === node.x && ny === node.y) return;
     if (!drag.checkpointed){ diagramCheckpoint(type); drag.checkpointed = true; refreshDiagramChrome(type, true); }
     node.x = nx; node.y = ny;
@@ -2307,9 +2543,10 @@ function wireDiagramToolbars(){
     const palette = DIAGRAM_PALETTES[type].find(p => p.kind === kind);
     const count = state.nodes.length;
     diagramCheckpoint(type);
+    const pos = type === 'sequence' ? { x: 30 + count * 180, y: 20 } : { x: 30 + (count % 5) * 200, y: 30 + Math.floor(count / 5) * 150 };
     state.nodes.push({
       id: 'n' + Math.random().toString(36).slice(2,9), kind,
-      x: 30 + (count % 5) * 200, y: 30 + Math.floor(count / 5) * 150,
+      x: Math.min(pos.x, DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[kind].w), y: pos.y,
       label: palette.defaultLabel()
     });
     diagramDirty[type] = true;
@@ -2332,11 +2569,11 @@ function wireDiagramToolbars(){
   }));
   content.querySelectorAll('[data-diagram-undo]').forEach(btn => btn.addEventListener('click', () => diagramUndo(btn.dataset.diagramType)));
   content.querySelectorAll('[data-diagram-redo]').forEach(btn => btn.addEventListener('click', () => diagramRedo(btn.dataset.diagramType)));
-  ['usecases', 'architecture'].forEach(type => refreshDiagramChrome(type));
+  DIAGRAM_TYPES.forEach(type => refreshDiagramChrome(type));
   if (!window.__diagramKeysBound){
     window.__diagramKeysBound = true;
     document.addEventListener('keydown', (e) => {
-      if (activeTab !== 'usecases' && activeTab !== 'architecture') return;
+      if (!DIAGRAM_TYPES.includes(activeTab)) return;
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const tag = (e.target && e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
@@ -2506,6 +2743,9 @@ function seAnalyze(){
     allocated: rows.filter(r => r.bl.size > 0).length,
     traced: rows.filter(r => r.uc.size > 0).length,
     verified: byStatus.verified + byStatus.validated,
+    withEvidence: reqs.filter(r => (seLatestVerification(r.id) || {}).result === 'pass').length,
+    failedLatest: reqs.filter(r => (seLatestVerification(r.id) || {}).result === 'fail'),
+    verifiedNoEvidence: reqs.filter(r => (r.status === 'verified' || r.status === 'validated') && !seVerifications(r.id).some(v => v.result === 'pass')),
     reqNoBlock: rows.filter(r => r.bl.size === 0).map(r => r.req),
     reqNoUseCase: rows.filter(r => r.uc.size === 0).map(r => r.req),
     blockNoReq: blocks.filter(b => !usedBl.has(b.id)),
@@ -2513,6 +2753,11 @@ function seAnalyze(){
   };
 }
 const sePct = (n, total) => total ? Math.round((n / total) * 100) : 0;
+const SE_VER_METHODS = ['test', 'inspection', 'analysis', 'demonstration'];
+const SE_VER_RESULTS = ['pass', 'fail', 'pending'];
+// Records come back newest first; the first one for a requirement is its latest.
+function seVerifications(reqId){ return (project.verifications || []).filter(v => v.requirement_id === reqId); }
+function seLatestVerification(reqId){ return seVerifications(reqId)[0] || null; }
 const seReqCode = (r) => 'REQ-' + String(r.req_number).padStart(3, '0');
 
 function seCoverageCards(a){
@@ -2522,6 +2767,7 @@ function seCoverageCards(a){
       ${card(a.allocated, t('cov.allocated'))}
       ${card(a.traced, t('cov.traced'))}
       ${card(a.verified, t('cov.verified'))}
+      ${card(a.withEvidence, t('cov.evidence'))}
     </div>
     <div class="se-status-bar" role="img" aria-label="${SE_STATUSES.map(s => `${t('project.status.' + s)}: ${a.byStatus[s]}`).join(', ')}">
       ${SE_STATUSES.map(s => a.byStatus[s] ? `<span class="se-seg ${s}" style="flex:${a.byStatus[s]}" title="${t('project.status.' + s)}: ${a.byStatus[s]}"></span>` : '').join('')}
@@ -2543,17 +2789,177 @@ function renderSeCoverageBlock(){
   return html;
 }
 
+// ---------------------------------------------------------------------------
+// PDF REPORT: a print-ready document (requirements, use case specs, every diagram,
+// the traceability matrix and verification records) opened in a new tab. The
+// browser's print dialog saves it as a PDF, which keeps the diagrams as real
+// vector graphics and the text selectable. No PDF library needed.
+// ---------------------------------------------------------------------------
+function diagramContentBox(type){
+  const st = ensureDiagramState(type);
+  if (!st.nodes.length) return null;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  st.nodes.forEach(n => {
+    const sz = DIAGRAM_SHAPE_SIZE[n.kind];
+    x1 = Math.min(x1, n.x); y1 = Math.min(y1, n.y);
+    x2 = Math.max(x2, n.x + sz.w); y2 = Math.max(y2, n.y + sz.h + (n.kind === 'decision' ? 24 : 0));
+  });
+  if (type === 'sequence') y2 = Math.max(y2, Math.max(100, ...st.edges.map(e => e.y == null ? 110 : e.y)) + 60);
+  const m = 30;
+  x1 = Math.max(0, x1 - m); y1 = Math.max(0, y1 - m);
+  x2 = Math.min(DIAGRAM_CANVAS_W, x2 + m); y2 = Math.min(diagramCanvasH(type), y2 + m);
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+// The live diagram as a standalone-sized SVG, cropped to its content and scaled to the page width.
+function diagramSvgForReport(type){
+  const box = diagramContentBox(type);
+  if (!box) return '';
+  const prevSel = diagramSelected[type];
+  diagramSelected[type] = null;
+  let svg = buildDiagramSvgHTML(type, 1);
+  diagramSelected[type] = prevSel;
+  return svg
+    .replace(/viewBox="[^"]*"/, `viewBox="${box.x} ${box.y} ${box.w} ${box.h}"`)
+    .replace(/ width="[\d.]+" height="[\d.]+"/, ' style="width:100%;height:auto;max-height:150mm"');
+}
+
+const REPORT_CSS = `
+  @page { size: A4 landscape; margin: 14mm 12mm 16mm; @bottom-right { content: counter(page) " / " counter(pages); font-size: 9px; color: #5A6672; } }
+  *{box-sizing:border-box;}
+  body{font:11.5px/1.5 "Segoe UI",Inter,Arial,sans-serif;color:#1c2630;margin:0;padding:0 4px;}
+  h1{font-size:28px;margin:6px 0 4px;color:#1F5C93;}
+  h2{font-size:17px;margin:26px 0 10px;padding-bottom:4px;border-bottom:2px solid #3E8FD0;break-after:avoid;}
+  h3{font-size:13.5px;margin:14px 0 4px;break-after:avoid;}
+  .sub{color:#5A6672;margin:0 0 4px;}
+  .meta{color:#5A6672;font-size:11px;}
+  .cards{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+  .card{border:1px solid #cfd8de;border-radius:8px;padding:8px 14px;min-width:130px;}
+  .card b{display:block;font-size:20px;}
+  table{border-collapse:collapse;width:100%;margin:6px 0 10px;}
+  th,td{border:1px solid #cfd8de;padding:5px 8px;vertical-align:top;text-align:left;}
+  th{background:#eef4f8;}
+  tr{break-inside:avoid;}
+  thead{display:table-header-group;}
+  .code{font-family:Consolas,monospace;color:#1F5C93;white-space:nowrap;}
+  .pass{color:#1F7A46;font-weight:700;} .fail{color:#B3261E;font-weight:700;} .pending{color:#5A6672;font-weight:700;}
+  .desc{color:#5A6672;display:block;}
+  .diagram{break-inside:avoid;margin:8px 0 18px;}
+  .diagram svg{border:1px solid #dfe5e9;border-radius:6px;background:#fff;}
+  .uc{break-inside:avoid;border:1px solid #cfd8de;border-radius:8px;padding:8px 14px;margin:8px 0;}
+  .uc h3{margin-top:0;}
+  .uc ol,.uc ul{margin:2px 0 6px 18px;padding:0;}
+  .matrix th.col{writing-mode:vertical-rl;transform:rotate(180deg);height:110px;white-space:nowrap;text-align:left;padding:4px 2px;vertical-align:bottom;}
+  .matrix td.dot{text-align:center;width:22px;color:#1F5C93;font-size:13px;}
+  .matrix th.grp{text-align:center;}
+  .empty{color:#5A6672;font-style:italic;}
+  .noprint{position:sticky;top:0;background:#fff8e9;border-bottom:1px solid #f0ddb8;padding:10px 14px;margin:0 -4px 14px;display:flex;gap:14px;align-items:center;z-index:5;}
+  .noprint button{font:inherit;padding:7px 16px;border-radius:100px;border:0;background:#3E8FD0;color:#fff;font-weight:600;cursor:pointer;}
+  @media print{ .noprint{display:none;} body{padding:0;} }
+`;
+
+function buildSeReportHtml(){
+  const a = seAnalyze();
+  const esc = escapeHTML;
+  const today = new Date().toLocaleDateString(currentLang, { dateStyle: 'long' });
+  const author = currentUser ? (currentUser.user_metadata?.display_name || currentUser.email) : '';
+  const dash = '<span class="empty">—</span>';
+  const names = (type, ids) => seTargets(type).filter(n => ids.has(n.id)).map(n => esc(n.label)).join(', ') || dash;
+  const verText = (v) => v ? `<span class="${v.result}">${t('ver.result_' + v.result)}</span> · ${t('ver.method_' + v.method)} · ${esc(v.performed_on)}` : dash;
+
+  let body = `<div class="noprint"><button type="button" onclick="window.print()">${t('rpt.print')}</button><span>${t('rpt.print_hint')}</span></div>
+    <h1>${esc(project.title)}</h1>
+    <p class="sub">${t('rpt.title')}</p>
+    <p class="meta">${t('rpt.generated')} ${esc(today)}${author ? ` ${t('rpt.by')} ${esc(author)}` : ''} · Together</p>
+    ${project.pitch ? `<p>${esc(project.pitch)}</p>` : ''}`;
+
+  // Summary
+  const card = (label, value) => `<div class="card"><b>${value}</b>${label}</div>`;
+  body += `<h2>${t('rpt.summary')}</h2><div class="cards">
+    ${card(t('cov.total'), a.total)}
+    ${card(t('cov.allocated'), sePct(a.allocated, a.total) + '%')}
+    ${card(t('cov.traced'), sePct(a.traced, a.total) + '%')}
+    ${card(t('cov.verified'), sePct(a.verified, a.total) + '%')}
+    ${card(t('cov.evidence'), sePct(a.withEvidence, a.total) + '%')}
+  </div><p class="meta">${SE_STATUSES.map(st => `${t('project.status.' + st)}: ${a.byStatus[st]}`).join(' · ')}</p>`;
+
+  // Requirements
+  body += `<h2>${t('rpt.requirements')}</h2>`;
+  if (!a.rows.length) body += `<p class="empty">${t('rpt.no_requirements')}</p>`;
+  else body += `<table><thead><tr><th>${t('rpt.col_code')}</th><th>${t('rpt.col_requirement')}</th><th>${t('rpt.col_status')}</th><th>${t('rpt.col_usecases')}</th><th>${t('rpt.col_blocks')}</th><th>${t('rpt.col_verification')}</th></tr></thead><tbody>${
+    a.rows.map(row => `<tr><td class="code">${seReqCode(row.req)}</td>
+      <td><strong>${esc(row.req.title)}</strong>${row.req.description ? `<span class="desc">${esc(row.req.description)}</span>` : ''}</td>
+      <td>${t('project.status.' + row.req.status)}</td><td>${names('usecases', row.uc)}</td><td>${names('architecture', row.bl)}</td>
+      <td>${verText(seLatestVerification(row.req.id))}</td></tr>`).join('')}</tbody></table>`;
+
+  // Use case specifications
+  const specs = a.useCases.filter(ucHasDetail);
+  if (specs.length){
+    body += `<h2>${t('rpt.usecase_specs')}</h2>` + specs.map(n => {
+      const d = n.detail || {};
+      const lines = (txt) => String(txt || '').split('\n').map(l => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim()).filter(Boolean);
+      const field = (label, v) => String(v || '').trim() ? `<p><strong>${label}:</strong> ${esc(v)}</p>` : '';
+      const steps = lines(d.steps), alts = lines(d.alts);
+      return `<div class="uc"><h3>${esc(n.label)}</h3>${field(t('uc.desc'), d.desc)}${field(t('uc.pre'), d.pre)}
+        ${steps.length ? `<p><strong>${t('rpt.steps')}:</strong></p><ol>${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}
+        ${alts.length ? `<p><strong>${t('rpt.alts')}:</strong></p><ul>${alts.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+        ${field(t('uc.post'), d.post)}</div>`;
+    }).join('');
+  }
+
+  // Diagrams
+  const drawn = DIAGRAM_TYPES.filter(ty => diagramContentBox(ty));
+  if (drawn.length){
+    body += `<h2>${t('rpt.diagrams')}</h2>` + drawn.map(ty => `<div class="diagram"><h3>${t('project.tab_' + ty)}</h3>${diagramSvgForReport(ty)}</div>`).join('');
+  }
+
+  // Traceability matrix
+  const cols = [...a.useCases.map(n => ({ type: 'usecases', n })), ...a.blocks.map(n => ({ type: 'architecture', n }))];
+  if (a.rows.length && cols.length){
+    body += `<h2>${t('rpt.matrix')}</h2><table class="matrix"><thead><tr><th rowspan="2">${t('rpt.col_requirement')}</th>
+      ${a.useCases.length ? `<th class="grp" colspan="${a.useCases.length}">${t('trace.col_usecases')}</th>` : ''}${a.blocks.length ? `<th class="grp" colspan="${a.blocks.length}">${t('trace.col_blocks')}</th>` : ''}</tr>
+      <tr>${cols.map(c => `<th class="col">${esc(c.n.label)}</th>`).join('')}</tr></thead><tbody>${
+      a.rows.map(row => `<tr><td><span class="code">${seReqCode(row.req)}</span> ${esc(row.req.title)}</td>${cols.map(c => `<td class="dot">${(c.type === 'usecases' ? row.uc : row.bl).has(c.n.id) ? '●' : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  }
+
+  // Verification log
+  const records = project.verifications || [];
+  if (records.length){
+    const reqById = new Map(a.reqs.map(r => [r.id, r]));
+    body += `<h2>${t('rpt.verif_log')}</h2><table><thead><tr><th>${t('rpt.col_code')}</th><th>${t('ver.method')}</th><th>${t('ver.result')}</th><th>${t('ver.date')}</th><th>${t('rpt.col_by')}</th><th>${t('ver.notes')}</th><th>${t('ver.evidence_link')}</th></tr></thead><tbody>${
+      records.slice().sort((x, y) => ((reqById.get(x.requirement_id) || {}).req_number || 0) - ((reqById.get(y.requirement_id) || {}).req_number || 0)).map(v => {
+        const r = reqById.get(v.requirement_id);
+        return `<tr><td class="code">${r ? seReqCode(r) : '?'}</td><td>${t('ver.method_' + v.method)}</td><td><span class="${v.result}">${t('ver.result_' + v.result)}</span></td>
+          <td>${esc(v.performed_on)}</td><td>${esc(v.created_by_name || '')}</td><td>${esc(v.notes || '')}</td><td>${v.evidence_url && /^https?:\/\//i.test(v.evidence_url) ? esc(v.evidence_url) : ''}</td></tr>`;
+      }).join('')}</tbody></table>`;
+  }
+
+  return `<!doctype html><html lang="${esc(currentLang)}"><head><meta charset="utf-8"><title>${esc(project.title)} - ${t('rpt.title')}</title>
+    <style>${REPORT_CSS}${DIAGRAM_EXPORT_CSS}</style></head><body>${body}</body></html>`;
+}
+
+function exportSeReport(){
+  const html = buildSeReportHtml();
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+  const w = window.open(url, '_blank');
+  if (!w) alert(t('rpt.popup_blocked'));
+  setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
+}
+
 function renderTraceabilityPanel(isOwner){
   const a = seAnalyze();
   let html = '';
   if (a.total === 0) return `<p class="credits-note">${t('trace.empty_reqs')}</p>`;
 
+  html += `<div class="se-ai-bar"><span class="spacer"></span><button class="btn btn-ghost btn-small" type="button" data-se-pdf>⤓ ${t('rpt.button')}</button></div>`;
   html += `<div class="section-block" style="margin-top:0;"><h2>${t('trace.coverage_heading')}</h2>${seCoverageCards(a)}</div>`;
 
   const gapList = (title, items, labelOf) => items.length
     ? `<div class="se-gap"><h4>${title} <span class="chip chip-warn">${items.length}</span></h4><div class="card-row">${items.map(i => `<span class="chip">${escapeHTML(labelOf(i))}</span>`).join('')}</div></div>` : '';
   const gaps = gapList(t('trace.gap_req_no_block'), a.reqNoBlock, r => `${seReqCode(r)} ${r.title}`)
     + gapList(t('trace.gap_req_no_usecase'), a.reqNoUseCase, r => `${seReqCode(r)} ${r.title}`)
+    + gapList(t('trace.gap_verified_no_evidence'), a.verifiedNoEvidence, r => `${seReqCode(r)} ${r.title}`)
+    + gapList(t('trace.gap_failed'), a.failedLatest, r => `${seReqCode(r)} ${r.title}`)
     + gapList(t('trace.gap_block_no_req'), a.blockNoReq, n => n.label)
     + gapList(t('trace.gap_usecase_no_req'), a.useCaseNoReq, n => n.label);
   html += `<div class="section-block"><h2>${t('trace.gaps_heading')}</h2>${gaps || `<p class="credits-note">${t('trace.no_gaps')}</p>`}</div>`;
@@ -2586,6 +2992,146 @@ function renderTraceabilityPanel(isOwner){
 }
 
 // Link chips shown on each requirement in the Requirements tab.
+// ---------------------------------------------------------------------------
+// AI HELP for the systems engineering tabs. The se-assist Edge Function only ever
+// returns proposals; nothing changes until the user clicks Add / Apply.
+// ---------------------------------------------------------------------------
+let seAi = { scope: null, task: null, status: 'idle', result: null, error: '', reqId: null };
+
+async function seAssistCall(task, payload){
+  const { data, error } = await supabaseClient.functions.invoke('se-assist', { body: { project_id: projectId, task, lang: currentLang, payload } });
+  if (error){
+    let message = error.message;
+    try { const body = await error.context.json(); if (body && body.error) message = body.error; } catch (e) {}
+    throw new Error(message);
+  }
+  if (!data || !data.result) throw new Error(t('seai.bad_reply'));
+  return data.result;
+}
+
+async function seAiRun(scope, task, payload, reqId){
+  seAi = { scope, task, status: 'loading', result: null, error: '', reqId: reqId || null };
+  render();
+  try {
+    seAi.result = await seAssistCall(task, payload);
+    seAi.status = 'done';
+  } catch (err) {
+    seAi.status = 'error'; seAi.error = err.message;
+  }
+  render();
+  const panel = document.getElementById('seAiPanel');
+  if (panel) panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function renderSeAiBar(isOwner){
+  const btn = (task, key) => `<button class="btn btn-ghost btn-small" type="button" data-seai-run data-scope="requirements" data-task="${task}" ${seAi.status === 'loading' ? 'disabled' : ''}>✨ ${t(key)}</button>`;
+  return `<div class="se-ai-bar">${isOwner ? btn('suggest_requirements', 'seai.suggest') : ''}${btn('review', 'seai.review')}<span class="spacer"></span><button class="btn btn-ghost btn-small" type="button" data-se-pdf>⤓ ${t('rpt.button')}</button></div>`;
+}
+
+function renderSeAiPanel(scope){
+  if (seAi.scope !== scope || seAi.status === 'idle') return '';
+  const wrap = (inner) => `<div class="se-ai-panel" id="seAiPanel">${inner}<p class="credits-note se-ai-note">${t('seai.disclaimer')}</p></div>`;
+  const dismiss = `<button class="btn btn-ghost btn-small" type="button" data-seai-dismiss>${t('seai.dismiss')}</button>`;
+  if (seAi.status === 'loading') return wrap(`<p class="se-ai-working" role="status">✨ ${t('seai.working')}</p>`);
+  if (seAi.status === 'error') return wrap(`<p class="form-msg error" role="alert">${escapeHTML(seAi.error)}</p><div class="se-ai-actions">${dismiss}</div>`);
+  if (seAi.status === 'applied') return wrap(`<p class="form-msg ok" role="status">${escapeHTML(seAi.note || '')}</p><div class="se-ai-actions">${dismiss}</div>`);
+  const r = seAi.result;
+  const isOwner = currentUser && project.owner_id === currentUser.id;
+  if (seAi.task === 'suggest_requirements'){
+    return wrap(`<h4>${t('seai.title_suggest')}</h4>${r.requirements.map((q, i) => `
+      <label class="se-ai-item"><input type="checkbox" data-seai-pick="${i}" checked>
+        <span><strong>${escapeHTML(q.title)}</strong>${q.description ? `<br><span class="credits-note">${escapeHTML(q.description)}</span>` : ''}</span></label>`).join('')}
+      <div class="se-ai-actions">${isOwner ? `<button class="btn btn-primary btn-small" type="button" data-seai-add-reqs>${t('seai.add_selected')}</button>` : ''}${dismiss}</div>`);
+  }
+  if (seAi.task === 'improve_requirement'){
+    const cur = (project.project_requirements || []).find(x => x.id === seAi.reqId) || {};
+    return wrap(`<h4>${t('seai.title_improve')}</h4>
+      <div class="se-ai-compare">
+        <div><span class="se-ai-label">${t('seai.current')}</span><strong>${escapeHTML(cur.title || '')}</strong><p class="credits-note">${escapeHTML(cur.description || '')}</p></div>
+        <div><span class="se-ai-label">${t('seai.proposed')}</span><strong>${escapeHTML(r.title)}</strong><p class="credits-note">${escapeHTML(r.description)}</p></div>
+      </div>
+      ${r.issues.length ? `<p class="se-ai-label">${t('seai.issues')}</p><ul class="se-ai-list">${r.issues.map(x => `<li>${escapeHTML(x)}</li>`).join('')}</ul>` : ''}
+      <div class="se-ai-actions">${isOwner ? `<button class="btn btn-primary btn-small" type="button" data-seai-apply-improve>${t('seai.apply')}</button>` : ''}${dismiss}</div>`);
+  }
+  if (seAi.task === 'review'){
+    return wrap(`<h4>${t('seai.title_review')}</h4>${r.findings.length
+      ? `<ul class="se-ai-list">${r.findings.map(x => `<li><span class="chip sev-${x.severity}">${t('seai.sev_' + x.severity)}</span> ${escapeHTML(x.text)}</li>`).join('')}</ul>`
+      : `<p class="credits-note">${t('seai.no_findings')}</p>`}
+      <div class="se-ai-actions">${dismiss}</div>`);
+  }
+  if (seAi.task === 'suggest_architecture'){
+    return wrap(`<h4>${t('seai.title_arch')}</h4>
+      <p class="se-ai-label">${t('seai.blocks')}</p>
+      <ul class="se-ai-list">${r.blocks.map(b => `<li><strong>${escapeHTML(b.name)}</strong>${b.description ? ' · ' + escapeHTML(b.description) : ''}</li>`).join('')}</ul>
+      ${r.connections.length ? `<p class="se-ai-label">${t('seai.connections')}</p><ul class="se-ai-list">${r.connections.map(c => `<li>${escapeHTML(c.from)} → ${escapeHTML(c.to)} <span class="chip">${t('project.edge_' + c.kind)}</span> ${escapeHTML(c.label)}</li>`).join('')}</ul>` : ''}
+      <div class="se-ai-actions"><button class="btn btn-primary btn-small" type="button" data-seai-add-diagram>${t('seai.add_to_diagram')}</button>${dismiss}</div>`);
+  }
+  return '';
+}
+
+// Adds the proposed blocks (reusing same-named existing ones) and connections to the architecture diagram as an undoable, unsaved change.
+function seAiApplyArchitecture(){
+  const r = seAi.result;
+  const state = ensureDiagramState('architecture');
+  diagramCheckpoint('architecture');
+  const idByName = new Map(state.nodes.filter(n => n.kind === 'block').map(n => [n.label.toLowerCase(), n.id]));
+  const startY = state.nodes.length ? Math.min(diagramCanvasH('architecture') - 120, Math.max(...state.nodes.map(n => n.y)) + 150) : 40;
+  let placed = 0;
+  r.blocks.forEach(b => {
+    if (idByName.has(b.name.toLowerCase())) return;
+    const id = 'n' + Math.random().toString(36).slice(2, 9);
+    state.nodes.push({ id, kind: 'block', x: 30 + (placed % 4) * 280, y: startY + Math.floor(placed / 4) * 150, label: b.name, sublabel: b.description });
+    idByName.set(b.name.toLowerCase(), id);
+    placed++;
+  });
+  r.connections.forEach(c => {
+    const from = idByName.get(c.from.toLowerCase()), to = idByName.get(c.to.toLowerCase());
+    if (!from || !to || from === to) return;
+    const kind = DIAGRAM_EDGE_KINDS_BY_TYPE.architecture.includes(c.kind) ? c.kind : 'flow';
+    if (state.edges.some(e => e.from === from && e.to === to && e.kind === kind)) return;
+    state.edges.push({ id: 'e' + Math.random().toString(36).slice(2, 9), from, to, kind, ...(c.label ? { label: c.label } : {}) });
+  });
+  diagramDirty.architecture = true;
+  seViewsStale = true;
+  seAi = { scope: 'architecture', task: null, status: 'applied', result: null, error: '', reqId: null, note: t('seai.diagram_added') };
+  render();
+}
+
+let verOpenReqId = null; // keeps the record list open across re-renders after adding one
+
+function renderReqVerification(req, isOwner){
+  const records = seVerifications(req.id);
+  const latest = records[0];
+  const resultChip = latest
+    ? `<span class="chip ver-${latest.result}">${t('ver.result_' + latest.result)} · ${t('ver.method_' + latest.method)} · ${escapeHTML(latest.performed_on)}</span>`
+    : `<span class="chip">${t('ver.none')}</span>`;
+  const today = new Date().toISOString().slice(0, 10);
+  const list = records.map(v => `
+    <div class="ver-row">
+      <span class="chip ver-${v.result}">${t('ver.result_' + v.result)}</span>
+      <span class="ver-main"><strong>${t('ver.method_' + v.method)}</strong> · ${escapeHTML(v.performed_on)} · ${t('ver.by')} ${escapeHTML(v.created_by_name || '?')}
+        ${v.notes ? `<span class="ver-notes">${escapeHTML(v.notes)}</span>` : ''}
+        ${v.evidence_url && /^https?:\/\//i.test(v.evidence_url) ? `<a href="${escapeHTML(v.evidence_url)}" target="_blank" rel="noopener noreferrer">${t('ver.evidence_link')} ↗</a>` : ''}
+      </span>
+      ${currentUser && (v.created_by === currentUser.id || isOwner) ? `<button class="icon-btn" type="button" data-ver-delete="${v.id}">${t('common.delete')}</button>` : ''}
+    </div>`).join('');
+  const form = currentUser ? `
+    <form class="ver-form" data-ver-form="${req.id}">
+      <label>${t('ver.method')}<select name="method">${SE_VER_METHODS.map(m => `<option value="${m}">${t('ver.method_' + m)}</option>`).join('')}</select></label>
+      <label>${t('ver.result')}<select name="result">${SE_VER_RESULTS.map(r => `<option value="${r}">${t('ver.result_' + r)}</option>`).join('')}</select></label>
+      <label>${t('ver.date')}<input type="date" name="performed_on" value="${today}" required></label>
+      <label class="wide">${t('ver.notes')}<textarea name="notes" rows="2" maxlength="1000"></textarea></label>
+      <label class="wide">${t('ver.evidence')}<input type="url" name="evidence_url" maxlength="500" placeholder="https://"></label>
+      <button class="btn btn-ghost btn-small" type="submit">${t('ver.add')}</button>
+      <span class="form-msg" data-ver-msg></span>
+    </form>` : '';
+  return `<div class="req-ver">${resultChip}
+    <details class="ver-details" data-ver-details="${req.id}" ${verOpenReqId === req.id ? 'open' : ''}>
+      <summary>${t('ver.heading')} (${records.length})</summary>
+      ${list || ''}${form}
+    </details></div>`;
+}
+
 function renderReqLinkChips(req){
   const names = (type) => {
     const ids = new Set(seReqLinkIds(req, type));
@@ -2615,7 +3161,7 @@ function renderReqLinkPicker(req){
 function renderRequirementsPanel(isOwner){
   const reqs = (project.project_requirements || []).slice().sort((a, b) => a.req_number - b.req_number);
   const statuses = ['created','implemented','verified','validated'];
-  let html = '';
+  let html = renderSeAiBar(isOwner) + renderSeAiPanel('requirements');
   if (reqs.length === 0) html += `<p class="credits-note">${t('project.no_requirements')}</p>`;
   reqs.forEach(r => {
     html += `
@@ -2624,6 +3170,7 @@ function renderRequirementsPanel(isOwner){
           <h4><span class="req-code">REQ-${String(r.req_number).padStart(3, '0')}</span> ${escapeHTML(r.title)}</h4>
           ${r.description ? `<p>${escapeHTML(r.description)}</p>` : ''}
           ${renderReqLinkChips(r)}
+          ${renderReqVerification(r, isOwner)}
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           ${isOwner ? `
@@ -2631,6 +3178,7 @@ function renderRequirementsPanel(isOwner){
               ${statuses.map(s => `<option value="${s}" ${r.status === s ? 'selected' : ''}>${t('project.status.' + s)}</option>`).join('')}
             </select>
             <div class="item-actions">
+              <button class="icon-btn" type="button" data-seai-run data-scope="requirements" data-task="improve_requirement" data-req="${r.id}">✨ ${t('seai.improve')}</button>
               <button class="icon-btn" data-edit-req="${r.id}">${t('common.edit')}</button>
               <button class="icon-btn" data-delete-req="${r.id}">${t('common.delete')}</button>
             </div>
@@ -2895,6 +3443,71 @@ function wireEvents(){
     editingReqId = null;
     loadProject();
   });
+  content.querySelectorAll('[data-se-pdf]').forEach(btn => btn.addEventListener('click', exportSeReport));
+
+  // --- AI help ---
+  content.querySelectorAll('[data-seai-run]').forEach(btn => btn.addEventListener('click', () => {
+    const { scope, task, req } = btn.dataset;
+    seAiRun(scope, task, task === 'improve_requirement' ? { requirement_id: req } : {}, req);
+  }));
+  content.querySelectorAll('[data-seai-dismiss]').forEach(btn => btn.addEventListener('click', () => { seAi = { scope: null, task: null, status: 'idle', result: null, error: '', reqId: null }; render(); }));
+  const addReqsBtn = content.querySelector('[data-seai-add-reqs]');
+  if (addReqsBtn) addReqsBtn.addEventListener('click', async () => {
+    const picked = [...content.querySelectorAll('[data-seai-pick]')].filter(c => c.checked).map(c => seAi.result.requirements[Number(c.dataset.seaiPick)]);
+    if (!picked.length) return;
+    addReqsBtn.disabled = true;
+    for (const q of picked){
+      const { error } = await supabaseClient.from('project_requirements').insert({ project_id: projectId, title: q.title, description: q.description || null });
+      if (error){ seAi = { ...seAi, status: 'error', error: error.message }; render(); return; }
+    }
+    seAi = { scope: 'requirements', task: null, status: 'applied', result: null, error: '', reqId: null, note: t('seai.reqs_added') };
+    loadProject();
+  });
+  const applyImproveBtn = content.querySelector('[data-seai-apply-improve]');
+  if (applyImproveBtn) applyImproveBtn.addEventListener('click', async () => {
+    applyImproveBtn.disabled = true;
+    const { error } = await supabaseClient.from('project_requirements').update({ title: seAi.result.title, description: seAi.result.description || null }).eq('id', seAi.reqId);
+    if (error){ seAi = { ...seAi, status: 'error', error: error.message }; render(); return; }
+    seAi = { scope: 'requirements', task: null, status: 'applied', result: null, error: '', reqId: null, note: t('seai.reqs_added') };
+    loadProject();
+  });
+  const addDiagramBtn = content.querySelector('[data-seai-add-diagram]');
+  if (addDiagramBtn) addDiagramBtn.addEventListener('click', seAiApplyArchitecture);
+
+  // --- Verification records ---
+  content.querySelectorAll('[data-ver-details]').forEach(d => d.addEventListener('toggle', () => { verOpenReqId = d.open ? d.dataset.verDetails : (verOpenReqId === d.dataset.verDetails ? null : verOpenReqId); }));
+  content.querySelectorAll('[data-ver-form]').forEach(form => form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const reqId = form.dataset.verForm;
+    const msg = form.querySelector('[data-ver-msg]');
+    const fd = new FormData(form);
+    const evidence = String(fd.get('evidence_url') || '').trim();
+    if (evidence && !/^https?:\/\//i.test(evidence)){ msg.textContent = t('ver.err_url'); msg.className = 'form-msg error'; return; }
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    const record = {
+      project_id: projectId, requirement_id: reqId, method: fd.get('method'), result: fd.get('result'),
+      performed_on: fd.get('performed_on'), notes: String(fd.get('notes') || '').trim() || null, evidence_url: evidence || null
+    };
+    const { error } = await supabaseClient.from('project_requirement_verifications').insert(record);
+    btn.disabled = false;
+    if (error){ msg.textContent = error.message; msg.className = 'form-msg error'; return; }
+    verOpenReqId = reqId;
+    const req = (project.project_requirements || []).find(r => r.id === reqId);
+    // Only the owner can change a requirement's status; offer it when a record passes.
+    if (record.result === 'pass' && req && currentUser && currentUser.id === project.owner_id && (req.status === 'created' || req.status === 'implemented')){
+      if (confirm(t('ver.mark_prompt'))) await supabaseClient.from('project_requirements').update({ status: 'verified' }).eq('id', reqId);
+    }
+    loadProject();
+  }));
+  content.querySelectorAll('[data-ver-delete]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm(t('ver.delete_confirm'))) return;
+    const rec = (project.verifications || []).find(v => v.id === btn.dataset.verDelete);
+    if (rec) verOpenReqId = rec.requirement_id;
+    await supabaseClient.from('project_requirement_verifications').delete().eq('id', btn.dataset.verDelete);
+    loadProject();
+  }));
+
   // Traceability matrix: click (or Enter/Space on) a cell to link/unlink a requirement and a diagram node.
   content.querySelectorAll('[data-trace-toggle]').forEach(cell => {
     const toggle = async () => {
@@ -3478,8 +4091,7 @@ function wireEvents(){
 
   // --- Systems Engineering diagrams ---
   wireDiagramToolbars();
-  wireDiagramCanvasInteractions('usecases');
-  wireDiagramCanvasInteractions('architecture');
+  DIAGRAM_TYPES.forEach(ty => wireDiagramCanvasInteractions(ty));
 }
 
 async function init(){
