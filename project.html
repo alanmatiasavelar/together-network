@@ -1863,6 +1863,61 @@ let diagramConnectFrom = { usecases: null, architecture: null };
 let diagramSelected = { usecases: null, architecture: null };
 let diagramZoom = { usecases: 1, architecture: 1 };
 let diagramFitApplied = { usecases: false, architecture: false };
+let diagramLinkKind = { usecases: 'association', architecture: 'association' };
+let diagramHistory = { usecases: { undo: [], redo: [] }, architecture: { undo: [], redo: [] } };
+
+// Connection types. `end`/`start` name the marker drawn at the target/source end;
+// `auto` is the stereotype shown when the connection has no custom label.
+const DIAGRAM_EDGE_KINDS = {
+  association:    { end: null,        start: null },
+  include:        { end: 'arrowOpen', start: null, dash: true, auto: '«include»' },
+  extend:         { end: 'arrowOpen', start: null, dash: true, auto: '«extend»' },
+  generalization: { end: 'triangle',  start: null },
+  flow:           { end: 'arrow',     start: null },
+  dependency:     { end: 'arrowOpen', start: null, dash: true },
+  composition:    { end: null,        start: 'diamond' }
+};
+const DIAGRAM_EDGE_KINDS_BY_TYPE = {
+  usecases: ['association', 'include', 'extend', 'generalization'],
+  architecture: ['association', 'flow', 'dependency', 'composition', 'generalization']
+};
+const diagramEdgeKind = (edge) => DIAGRAM_EDGE_KINDS[edge.kind] ? edge.kind : 'association';
+
+// Undo/redo: whole-diagram snapshots taken just before each change. A snapshot
+// identical to the previous one is skipped, so focusing a field without
+// changing anything doesn't leave a no-op step behind.
+const DIAGRAM_HISTORY_MAX = 60;
+function diagramCheckpoint(type){
+  const snap = JSON.stringify(diagramState[type]);
+  const h = diagramHistory[type];
+  if (h.undo.length && h.undo[h.undo.length - 1] === snap) return;
+  h.undo.push(snap);
+  if (h.undo.length > DIAGRAM_HISTORY_MAX) h.undo.shift();
+  h.redo = [];
+}
+function diagramRestore(type, snap){
+  const parsed = JSON.parse(snap);
+  diagramState[type].nodes = parsed.nodes || [];
+  diagramState[type].edges = parsed.edges || [];
+  diagramSelected[type] = null;
+  diagramMode[type] = 'idle';
+  diagramConnectFrom[type] = null;
+  diagramDirty[type] = true;
+  updateDiagramDirtyNote(type);
+  refreshDiagramCanvas(type);
+}
+function diagramUndo(type){
+  const h = diagramHistory[type];
+  if (!h.undo.length) return;
+  h.redo.push(JSON.stringify(diagramState[type]));
+  diagramRestore(type, h.undo.pop());
+}
+function diagramRedo(type){
+  const h = diagramHistory[type];
+  if (!h.redo.length) return;
+  h.undo.push(JSON.stringify(diagramState[type]));
+  diagramRestore(type, h.redo.pop());
+}
 
 // Lets zoom in/out/reset buttons on the Gantt/WBS charts and the SysML
 // diagrams all share one set of handlers instead of branching per prefix.
@@ -1890,6 +1945,28 @@ function diagramClipToBox(node, towardX, towardY){
   const halfW = size.w / 2, halfH = size.h / 2;
   const scale = 1 / Math.max(Math.abs(dx) / halfW, Math.abs(dy) / halfH);
   return { x: cx + dx * scale, y: cy + dy * scale };
+}
+
+// Where a connection is drawn. Several connections between the same two shapes
+// (e.g. A to B and B to A) are fanned out sideways so they don't overlap.
+function diagramEdgeGeometry(type, edge){
+  const state = diagramState[type];
+  const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
+  if (!from || !to) return null;
+  const fc = diagramNodeCenter(from), tc = diagramNodeCenter(to);
+  let p1 = diagramClipToBox(from, tc.cx, tc.cy);
+  let p2 = diagramClipToBox(to, fc.cx, fc.cy);
+  const siblings = state.edges.filter(e => (e.from === edge.from && e.to === edge.to) || (e.from === edge.to && e.to === edge.from));
+  if (siblings.length > 1){
+    const dx = tc.cx - fc.cx, dy = tc.cy - fc.cy, len = Math.hypot(dx, dy) || 1;
+    // Offset is measured along a fixed normal (from the lower id to the higher), so A->B and B->A land on opposite sides.
+    const sign = edge.from < edge.to ? 1 : -1;
+    const idx = siblings.indexOf(edge);
+    const off = (idx - (siblings.length - 1) / 2) * 22 * sign;
+    const nx = (-dy / len) * off, ny = (dx / len) * off;
+    p1 = { x: p1.x + nx, y: p1.y + ny }; p2 = { x: p2.x + nx, y: p2.y + ny };
+  }
+  return { p1, p2, mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } };
 }
 
 function diagramShapeSvg(node, isSelected){
@@ -1927,14 +2004,18 @@ function buildDiagramSvgHTML(type, zoomOverride){
   const zoom = zoomOverride || diagramZoom[type] || 1;
   let edgesHtml = '';
   state.edges.forEach(edge => {
-    const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
-    if (!from || !to) return;
-    const toCenter = diagramNodeCenter(to), fromCenter = diagramNodeCenter(from);
-    const p1 = diagramClipToBox(from, toCenter.cx, toCenter.cy);
-    const p2 = diagramClipToBox(to, fromCenter.cx, fromCenter.cy);
+    const geo = diagramEdgeGeometry(type, edge);
+    if (!geo) return;
+    const kind = diagramEdgeKind(edge), def = DIAGRAM_EDGE_KINDS[kind];
     const isSel = selected && selected.kind === 'edge' && selected.id === edge.id;
-    edgesHtml += `<line class="diagram-edge${isSel ? ' selected' : ''} diagram-edge-${edge.kind}" data-edge-id="${edge.id}"
-      x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" marker-end="url(#diagramArrow)"></line>`;
+    const text = edge.label || def.auto || '';
+    const coords = `x1="${geo.p1.x}" y1="${geo.p1.y}" x2="${geo.p2.x}" y2="${geo.p2.y}"`;
+    edgesHtml += `<g class="diagram-edge-group">
+      <line class="diagram-edge-hit" data-edge-id="${edge.id}" ${coords}></line>
+      <line class="diagram-edge${isSel ? ' selected' : ''} diagram-edge-${kind}" data-edge-id="${edge.id}" ${coords}
+        ${def.start ? `marker-start="url(#diagramMarker-${type}-${def.start})"` : ''} ${def.end ? `marker-end="url(#diagramMarker-${type}-${def.end})"` : ''}></line>
+      <text class="diagram-edge-label" data-edge-label-for="${edge.id}" x="${geo.mid.x}" y="${geo.mid.y - 5}" text-anchor="middle">${escapeHTML(text)}</text>
+    </g>`;
   });
   let nodesHtml = '';
   state.nodes.forEach(node => {
@@ -1944,8 +2025,17 @@ function buildDiagramSvgHTML(type, zoomOverride){
   return `
     <svg id="diagramSvg-${type}" class="diagram-svg" viewBox="0 0 ${DIAGRAM_CANVAS_W} ${DIAGRAM_CANVAS_H}" width="${DIAGRAM_CANVAS_W * zoom}" height="${DIAGRAM_CANVAS_H * zoom}" data-diagram-type="${type}">
       <defs>
-        <marker id="diagramArrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L7,3 L0,6 Z" fill="#8a97a3"></path>
+        <marker id="diagramMarker-${type}-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L8,3.5 L0,7 Z" fill="#8a97a3"></path>
+        </marker>
+        <marker id="diagramMarker-${type}-arrowOpen" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L8,3.5 L0,7" fill="none" stroke="#8a97a3" stroke-width="1.5"></path>
+        </marker>
+        <marker id="diagramMarker-${type}-triangle" markerWidth="14" markerHeight="14" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0.5,0.5 L12,6 L0.5,11.5 Z" fill="#ffffff" stroke="#8a97a3" stroke-width="1.5"></path>
+        </marker>
+        <marker id="diagramMarker-${type}-diamond" markerWidth="18" markerHeight="14" refX="0" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,6 L8,0.5 L16,6 L8,11.5 Z" fill="#8a97a3" stroke="#8a97a3" stroke-width="1"></path>
         </marker>
       </defs>
       <g class="diagram-edges">${edgesHtml}</g>
@@ -1966,6 +2056,8 @@ const DIAGRAM_EXPORT_CSS = `
   .diagram-block-divider{stroke:#DFE5E9;stroke-width:1;}
   .diagram-block-desc{font-family:'Inter',Arial,sans-serif;font-size:10px;fill:#5A6672;}
   .diagram-edge{stroke:#8a97a3;stroke-width:1.5;}
+  .diagram-edge-include,.diagram-edge-extend,.diagram-edge-dependency{stroke-dasharray:6 4;}
+  .diagram-edge-label{font-family:'Inter',Arial,sans-serif;font-size:11px;font-weight:500;fill:#2C3742;paint-order:stroke;stroke:#ffffff;stroke-width:4px;stroke-linejoin:round;}
 `;
 
 // The diagram is already plain SVG, so this just serializes it as a
@@ -2003,6 +2095,12 @@ function ensureDiagramState(type){
     const saved = (project.project_diagrams || []).find(d => d.type === type);
     diagramState[type] = saved && saved.data ? JSON.parse(JSON.stringify(saved.data)) : { nodes: [], edges: [] };
     diagramDirty[type] = false;
+    // Diagrams saved before typed connections (no `v`) drew every line with an arrowhead.
+    // Keep that look for architecture by treating those lines as flows; later saves carry v:2.
+    if (!diagramState[type].v){
+      if (type === 'architecture') diagramState[type].edges.forEach(e => { if (!e.kind || e.kind === 'association') e.kind = 'flow'; });
+      diagramState[type].v = 2;
+    }
   }
   return diagramState[type];
 }
@@ -2014,26 +2112,86 @@ function renderDiagramPanel(type){
     <div class="diagram-toolbar">
       ${palette.map(p => `<button class="btn btn-ghost btn-small" data-diagram-add="${p.kind}" data-diagram-type="${type}" type="button">+ ${p.label()}</button>`).join('')}
       <button class="btn btn-ghost btn-small" data-diagram-connect data-diagram-type="${type}" type="button">🔗 ${t('project.diagram_connect')}</button>
+      <label class="diagram-linktype" title="${t('project.diagram_link_type')}">
+        <span>${t('project.diagram_link_type')}</span>
+        <select data-diagram-linktype data-diagram-type="${type}">${diagramKindOptions(type, diagramLinkKind[type])}</select>
+      </label>
       <button class="btn btn-ghost btn-small" data-diagram-rename data-diagram-type="${type}" type="button">✎ ${t('project.diagram_rename')}</button>
+      <button class="btn btn-ghost btn-small" data-diagram-undo data-diagram-type="${type}" type="button" title="${t('project.diagram_undo')} (Ctrl+Z)" aria-label="${t('project.diagram_undo')}">↶</button>
+      <button class="btn btn-ghost btn-small" data-diagram-redo data-diagram-type="${type}" type="button" title="${t('project.diagram_redo')} (Ctrl+Y)" aria-label="${t('project.diagram_redo')}">↷</button>
       <button class="btn btn-ghost btn-small" data-diagram-delete data-diagram-type="${type}" type="button">${t('project.diagram_delete_selected')}</button>
       <span class="spacer"></span>
       <span class="credits-note" id="diagramDirtyNote-${type}">${diagramDirty[type] ? t('project.diagram_unsaved') : ''}</span>
       <button class="btn btn-primary btn-small" data-diagram-save data-diagram-type="${type}" type="button">${t('common.save')}</button>
     </div>
-    <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')}</p>
+    <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')} ${t('project.diagram_hint_edges')}</p>
+    <div class="diagram-inspector" id="diagramInspector-${type}" hidden></div>
     ${renderChartToolbar(type, diagramZoom[type], 'svg')}
     <div class="diagram-canvas-wrap" id="diagramScroll-${type}">${buildDiagramSvgHTML(type)}</div>
   `;
 }
 
 let seViewsStale = false;
+let diagramDrag = null; // { type, nodeId, dx, dy, checkpointed } while a shape is being dragged
+window.addEventListener('mouseup', () => { diagramDrag = null; });
 
-function refreshDiagramCanvas(type){
+function diagramKindOptions(type, selectedKind){
+  return DIAGRAM_EDGE_KINDS_BY_TYPE[type].map(k => `<option value="${k}" ${k === selectedKind ? 'selected' : ''}>${t('project.edge_' + k)}</option>`).join('');
+}
+
+// Everything around the canvas that depends on the selection / history:
+// the connection inspector (type, label, reverse) and the undo/redo buttons.
+// Pass skipInspector while typing in the label field so it keeps focus.
+function refreshDiagramChrome(type, skipInspector){
+  const h = diagramHistory[type];
+  const undoBtn = content.querySelector(`[data-diagram-undo][data-diagram-type="${type}"]`);
+  const redoBtn = content.querySelector(`[data-diagram-redo][data-diagram-type="${type}"]`);
+  if (undoBtn) undoBtn.disabled = h.undo.length === 0;
+  if (redoBtn) redoBtn.disabled = h.redo.length === 0;
+  if (skipInspector) return;
+  const box = document.getElementById('diagramInspector-' + type);
+  if (!box) return;
+  const sel = diagramSelected[type];
+  const edge = sel && sel.kind === 'edge' ? diagramState[type].edges.find(e => e.id === sel.id) : null;
+  if (!edge){ box.hidden = true; box.innerHTML = ''; return; }
+  const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
+  const kind = diagramEdgeKind(edge);
+  box.hidden = false;
+  box.innerHTML = `
+    <span class="diagram-inspector-title">${escapeHTML(from ? from.label : '?')} → ${escapeHTML(to ? to.label : '?')}</span>
+    <label>${t('project.edge_type')}<select data-edge-kind>${diagramKindOptions(type, kind)}</select></label>
+    <label>${t('project.edge_label')}<input type="text" data-edge-label maxlength="40" value="${escapeHTML(edge.label || '')}" placeholder="${escapeHTML(DIAGRAM_EDGE_KINDS[kind].auto || t('project.edge_label_ph'))}"></label>
+    <button class="btn btn-ghost btn-small" data-edge-reverse type="button">⇄ ${t('project.edge_reverse')}</button>
+  `;
+  const markDirty = () => { diagramDirty[type] = true; updateDiagramDirtyNote(type); };
+  box.querySelector('[data-edge-kind]').addEventListener('change', (e) => {
+    diagramCheckpoint(type);
+    edge.kind = e.target.value;
+    markDirty();
+    refreshDiagramCanvas(type);
+  });
+  const labelInput = box.querySelector('[data-edge-label]');
+  labelInput.addEventListener('focus', () => diagramCheckpoint(type));
+  labelInput.addEventListener('input', () => {
+    edge.label = labelInput.value.trim() ? labelInput.value : undefined;
+    markDirty();
+    refreshDiagramCanvas(type, true);
+  });
+  box.querySelector('[data-edge-reverse]').addEventListener('click', () => {
+    diagramCheckpoint(type);
+    [edge.from, edge.to] = [edge.to, edge.from];
+    markDirty();
+    refreshDiagramCanvas(type);
+  });
+}
+
+function refreshDiagramCanvas(type, skipInspector){
   seViewsStale = true;
   const wrap = document.getElementById('diagramScroll-' + type);
   if (!wrap) return;
   wrap.innerHTML = buildDiagramSvgHTML(type);
   wireDiagramCanvasInteractions(type);
+  refreshDiagramChrome(type, skipInspector);
 }
 
 function updateDiagramDirtyNote(type){
@@ -2048,14 +2206,13 @@ function renameDiagramNode(type, nodeId){
   const node = diagramNodeById(type, nodeId);
   if (!node) return;
   const next = prompt(t('project.diagram_rename_prompt'), node.label);
-  if (next !== null && next.trim()){
-    node.label = next.trim();
-    diagramDirty[type] = true;
-  }
-  if (node.kind === 'block' && next !== null){
-    const desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
-    if (desc !== null){ node.sublabel = desc.trim(); diagramDirty[type] = true; }
-  }
+  let desc = null;
+  if (node.kind === 'block' && next !== null) desc = prompt(t('project.diagram_desc_prompt'), node.sublabel || '');
+  const labelChanged = next !== null && next.trim() && next.trim() !== node.label;
+  const descChanged = desc !== null && desc.trim() !== (node.sublabel || '');
+  if (labelChanged || descChanged) diagramCheckpoint(type);
+  if (labelChanged){ node.label = next.trim(); diagramDirty[type] = true; }
+  if (descChanged){ node.sublabel = desc.trim(); diagramDirty[type] = true; }
   updateDiagramDirtyNote(type);
   refreshDiagramCanvas(type);
 }
@@ -2074,29 +2231,29 @@ function wireDiagramCanvasInteractions(type){
   }
 
   function moveConnectedEdges(nodeId){
-    const node = diagramNodeById(type, nodeId);
     state.edges.forEach(edge => {
       if (edge.from !== nodeId && edge.to !== nodeId) return;
-      const line = svg.querySelector(`.diagram-edge[data-edge-id="${edge.id}"]`);
-      if (!line) return;
-      const other = diagramNodeById(type, edge.from === nodeId ? edge.to : edge.from);
-      if (!other) return;
-      const otherCenter = diagramNodeCenter(other), thisCenter = diagramNodeCenter(node);
-      const pThis = diagramClipToBox(node, otherCenter.cx, otherCenter.cy);
-      const pOther = diagramClipToBox(other, thisCenter.cx, thisCenter.cy);
-      if (edge.from === nodeId){ line.setAttribute('x1', pThis.x); line.setAttribute('y1', pThis.y); line.setAttribute('x2', pOther.x); line.setAttribute('y2', pOther.y); }
-      else { line.setAttribute('x2', pThis.x); line.setAttribute('y2', pThis.y); line.setAttribute('x1', pOther.x); line.setAttribute('y1', pOther.y); }
+      const geo = diagramEdgeGeometry(type, edge);
+      if (!geo) return;
+      svg.querySelectorAll('[data-edge-id="' + edge.id + '"]').forEach(line => {
+        line.setAttribute('x1', geo.p1.x); line.setAttribute('y1', geo.p1.y);
+        line.setAttribute('x2', geo.p2.x); line.setAttribute('y2', geo.p2.y);
+      });
+      const label = svg.querySelector('[data-edge-label-for="' + edge.id + '"]');
+      if (label){ label.setAttribute('x', geo.mid.x); label.setAttribute('y', geo.mid.y - 5); }
     });
   }
 
-  let dragging = null;
   svg.querySelectorAll('.diagram-node').forEach(g => {
     const nodeId = g.dataset.nodeId;
     g.addEventListener('mousedown', (e) => {
       e.preventDefault();
       if (diagramMode[type] === 'connecting'){
         if (diagramConnectFrom[type] && diagramConnectFrom[type] !== nodeId){
-          state.edges.push({ id: 'e' + Math.random().toString(36).slice(2,9), from: diagramConnectFrom[type], to: nodeId, kind: 'association' });
+          diagramCheckpoint(type);
+          const edge = { id: 'e' + Math.random().toString(36).slice(2,9), from: diagramConnectFrom[type], to: nodeId, kind: diagramLinkKind[type] };
+          state.edges.push(edge);
+          diagramSelected[type] = { kind: 'edge', id: edge.id }; // so its label can be typed straight away
           markDirty();
         }
         diagramMode[type] = 'idle';
@@ -2107,13 +2264,14 @@ function wireDiagramCanvasInteractions(type){
       diagramSelected[type] = { kind: 'node', id: nodeId };
       const p = toSvgPoint(e);
       const node = diagramNodeById(type, nodeId);
-      dragging = { nodeId, dx: p.x - node.x, dy: p.y - node.y };
+      // Kept outside this closure: the refresh below swaps in a new SVG (and a new closure) mid-gesture.
+      diagramDrag = { type, nodeId, dx: p.x - node.x, dy: p.y - node.y, checkpointed: false };
       refreshDiagramCanvas(type);
     });
     g.addEventListener('dblclick', () => renameDiagramNode(type, nodeId));
   });
 
-  svg.querySelectorAll('.diagram-edge').forEach(line => {
+  svg.querySelectorAll('.diagram-edge, .diagram-edge-hit').forEach(line => {
     line.addEventListener('click', () => {
       diagramSelected[type] = { kind: 'edge', id: line.dataset.edgeId };
       refreshDiagramCanvas(type);
@@ -2121,17 +2279,21 @@ function wireDiagramCanvasInteractions(type){
   });
 
   svg.addEventListener('mousemove', (e) => {
-    if (!dragging) return;
+    const drag = diagramDrag;
+    if (!drag || drag.type !== type) return;
     const p = toSvgPoint(e);
-    const node = diagramNodeById(type, dragging.nodeId);
-    node.x = Math.max(0, Math.min(DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[node.kind].w, p.x - dragging.dx));
-    node.y = Math.max(0, Math.min(DIAGRAM_CANVAS_H - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - dragging.dy));
+    const node = diagramNodeById(type, drag.nodeId);
+    if (!node) return;
+    const nx = Math.max(0, Math.min(DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[node.kind].w, p.x - drag.dx));
+    const ny = Math.max(0, Math.min(DIAGRAM_CANVAS_H - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - drag.dy));
+    if (nx === node.x && ny === node.y) return;
+    if (!drag.checkpointed){ diagramCheckpoint(type); drag.checkpointed = true; refreshDiagramChrome(type, true); }
+    node.x = nx; node.y = ny;
     markDirty();
-    const g = svg.querySelector(`.diagram-node[data-node-id="${dragging.nodeId}"]`);
-    if (g) g.setAttribute('transform', `translate(${node.x},${node.y})`);
-    moveConnectedEdges(dragging.nodeId);
+    const g = svg.querySelector('.diagram-node[data-node-id="' + drag.nodeId + '"]');
+    if (g) g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
+    moveConnectedEdges(drag.nodeId);
   });
-  window.addEventListener('mouseup', () => { dragging = null; });
 
   svg.addEventListener('mousedown', (e) => {
     if (e.target === svg) { diagramSelected[type] = null; refreshDiagramCanvas(type); }
@@ -2144,6 +2306,7 @@ function wireDiagramToolbars(){
     const state = diagramState[type];
     const palette = DIAGRAM_PALETTES[type].find(p => p.kind === kind);
     const count = state.nodes.length;
+    diagramCheckpoint(type);
     state.nodes.push({
       id: 'n' + Math.random().toString(36).slice(2,9), kind,
       x: 30 + (count % 5) * 200, y: 30 + Math.floor(count / 5) * 150,
@@ -2164,6 +2327,25 @@ function wireDiagramToolbars(){
     diagramConnectFrom[type] = diagramSelected[type].id;
   }));
 
+  content.querySelectorAll('[data-diagram-linktype]').forEach(sel => sel.addEventListener('change', () => {
+    diagramLinkKind[sel.dataset.diagramType] = sel.value;
+  }));
+  content.querySelectorAll('[data-diagram-undo]').forEach(btn => btn.addEventListener('click', () => diagramUndo(btn.dataset.diagramType)));
+  content.querySelectorAll('[data-diagram-redo]').forEach(btn => btn.addEventListener('click', () => diagramRedo(btn.dataset.diagramType)));
+  ['usecases', 'architecture'].forEach(type => refreshDiagramChrome(type));
+  if (!window.__diagramKeysBound){
+    window.__diagramKeysBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (activeTab !== 'usecases' && activeTab !== 'architecture') return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const tag = (e.target && e.target.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey){ e.preventDefault(); diagramUndo(activeTab); }
+      else if (key === 'y' || (key === 'z' && e.shiftKey)){ e.preventDefault(); diagramRedo(activeTab); }
+    });
+  }
+
   content.querySelectorAll('[data-diagram-rename]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.diagramType;
     const sel = diagramSelected[type];
@@ -2179,6 +2361,7 @@ function wireDiagramToolbars(){
     const sel = diagramSelected[type];
     if (!sel) return;
     const state = diagramState[type];
+    diagramCheckpoint(type);
     if (sel.kind === 'node'){
       state.nodes = state.nodes.filter(n => n.id !== sel.id);
       state.edges = state.edges.filter(e => e.from !== sel.id && e.to !== sel.id);
@@ -2195,7 +2378,7 @@ function wireDiagramToolbars(){
     const type = btn.dataset.diagramType;
     btn.disabled = true;
     const { error } = await supabaseClient.from('project_diagrams').upsert({
-      project_id: projectId, type, data: diagramState[type], updated_by: currentUser.id
+      project_id: projectId, type, data: { ...diagramState[type], v: 2 }, updated_by: currentUser.id
     }, { onConflict: 'project_id,type' });
     btn.disabled = false;
     if (error){ alert(error.message); return; }

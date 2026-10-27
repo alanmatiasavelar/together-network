@@ -1182,3 +1182,16 @@ summary:focus-visible,[tabindex]:focus-visible{
 .trace-cell.editable{cursor:pointer;}
 .trace-cell.editable:hover{background:#F6F1EA;}
 .trace-cell.editable:focus-visible{outline:2px solid var(--blue);outline-offset:-2px;}
+
+/* ---- diagram connections: types, labels, inspector ---- */
+.diagram-linktype{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-soft);}
+.diagram-linktype select{padding:6px 8px;font-size:13px;border:1px solid var(--line);border-radius:100px;background:var(--panel);}
+.diagram-toolbar button:disabled{opacity:.4;cursor:default;}
+.diagram-inspector{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:10px 14px;margin-bottom:10px;background:#FFF6E9;border:1px solid #F0DDB8;border-radius:12px;font-size:13px;}
+.diagram-inspector[hidden]{display:none;}
+.diagram-inspector-title{font-weight:600;color:#8A5A18;}
+.diagram-inspector label{display:inline-flex;align-items:center;gap:6px;font-weight:500;}
+.diagram-inspector select,.diagram-inspector input{padding:6px 10px;font-size:13px;border:1px solid var(--line);border-radius:8px;background:var(--panel);}
+.diagram-edge-hit{stroke:transparent;stroke-width:16;cursor:pointer;}
+.diagram-edge-include,.diagram-edge-extend,.diagram-edge-dependency{stroke-dasharray:6 4;}
+.diagram-edge-label{font-family:"Inter",sans-serif;font-size:11px;font-weight:500;fill:var(--ink);paint-order:stroke;stroke:#fff;stroke-width:4px;stroke-linejoin:round;pointer-events:none;}
