@@ -3,7 +3,7 @@
 --   1. more diagram types (context, sequence, state machine, activity)
 --   2. verification records per requirement (who verified it, how, result, evidence)
 --   3. a usage log for the "AI assist" Edge Function (rate limiting only)
--- NOT YET APPLIED: pending approval to run this migration and deploy supabase/functions/se-assist.
+-- Applied to production on 2026-10-27; supabase/functions/se-assist deployed (verify_jwt = true).
 -- ---------------------------------------------------------------------------
 
 -- 1. Diagram types. Each project keeps at most one saved diagram per type (existing unique constraint).
