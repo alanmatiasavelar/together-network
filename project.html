@@ -1880,6 +1880,25 @@ let diagramDirty = diagramPerType(() => false);
 let diagramMode = diagramPerType(() => 'idle');
 let diagramConnectFrom = diagramPerType(() => null);
 let diagramSelected = diagramPerType(() => null);
+// Two or more selected shapes (Shift/Ctrl-click, drag a box, Ctrl+A). A single shape or line lives in diagramSelected as before,
+// so the inspector, use case details, rename and connect keep working on "the" selection and only the group adds behavior.
+let diagramGroup = diagramPerType(() => new Set());
+let diagramMarquee = null; // { type, x0, y0, x1, y1, additive, base, moved } while a selection box is being dragged
+
+function diagramSelectedNodeIds(type){
+  if (diagramGroup[type].size >= 2) return [...diagramGroup[type]];
+  const sel = diagramSelected[type];
+  return sel && sel.kind === 'node' ? [sel.id] : [];
+}
+function diagramSetNodeSelection(type, ids){
+  const live = ids.filter(id => diagramState[type].nodes.some(n => n.id === id));
+  diagramGroup[type] = new Set(live.length >= 2 ? live : []);
+  diagramSelected[type] = live.length === 1 ? { kind: 'node', id: live[0] } : null;
+}
+function diagramSelectEdge(type, id){
+  diagramGroup[type] = new Set();
+  diagramSelected[type] = { kind: 'edge', id };
+}
 let diagramZoom = diagramPerType(() => 1);
 let diagramFitApplied = diagramPerType(() => false);
 let diagramLinkKind = diagramPerType(() => null); // filled in below once the connection kinds are known
@@ -1931,6 +1950,9 @@ function diagramRestore(type, snap){
   const sel = diagramSelected[type];
   const stillThere = sel && (sel.kind === 'node' ? diagramState[type].nodes.some(n => n.id === sel.id) : diagramState[type].edges.some(e => e.id === sel.id));
   diagramSelected[type] = stillThere ? sel : null;
+  const groupLeft = [...diagramGroup[type]].filter(id => diagramState[type].nodes.some(n => n.id === id));
+  diagramGroup[type] = new Set(groupLeft.length >= 2 ? groupLeft : []);
+  if (groupLeft.length === 1 && !diagramSelected[type]) diagramSelected[type] = { kind: 'node', id: groupLeft[0] };
   diagramMode[type] = 'idle';
   diagramConnectFrom[type] = null;
   diagramDirty[type] = true;
@@ -2114,7 +2136,7 @@ function buildDiagramSvgHTML(type, zoomOverride){
   });
   let nodesHtml = '';
   state.nodes.forEach(node => {
-    const isSel = selected && selected.kind === 'node' && selected.id === node.id;
+    const isSel = (selected && selected.kind === 'node' && selected.id === node.id) || diagramGroup[type].has(node.id);
     nodesHtml += `<g class="diagram-node" data-node-id="${node.id}" transform="translate(${node.x},${node.y})">${diagramShapeSvg(node, isSel)}</g>`;
   });
   return `
@@ -2167,10 +2189,10 @@ function exportDiagramSvg(type){
     alert(t('project.diagram_export_empty'));
     return;
   }
-  const prevSelected = diagramSelected[type];
-  diagramSelected[type] = null;
+  const prevSelected = diagramSelected[type], prevGroup = diagramGroup[type];
+  diagramSelected[type] = null; diagramGroup[type] = new Set();
   const svgMarkup = buildDiagramSvgHTML(type, 1);
-  diagramSelected[type] = prevSelected;
+  diagramSelected[type] = prevSelected; diagramGroup[type] = prevGroup;
 
   const withStyle = svgMarkup
     .replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
@@ -2222,7 +2244,7 @@ function renderDiagramPanel(type){
       <span class="credits-note" id="diagramDirtyNote-${type}">${diagramDirty[type] ? t('project.diagram_unsaved') : ''}</span>
       <button class="btn btn-primary btn-small" data-diagram-save data-diagram-type="${type}" type="button">${t('common.save')}</button>
     </div>
-    <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')} ${t('project.diagram_hint_edges')}</p>
+    <p class="credits-note" style="margin-bottom:10px;">${t('project.diagram_hint')} ${t('project.diagram_hint_edges')} ${t('project.diagram_hint_multi')}</p>
     ${type === 'architecture' ? `<div class="se-ai-bar"><button class="btn btn-ghost btn-small" type="button" data-seai-run data-scope="architecture" data-task="suggest_architecture" ${seAi.status === 'loading' ? 'disabled' : ''}>✨ ${t('seai.arch')}</button></div>${renderSeAiPanel('architecture')}` : ''}
     <div class="diagram-inspector" id="diagramInspector-${type}"><span class="credits-note">${t('project.diagram_inspector_hint')}</span></div>
     ${renderChartToolbar(type, diagramZoom[type], 'svg')}
@@ -2234,8 +2256,30 @@ function renderDiagramPanel(type){
 let seViewsStale = false;
 let diagramDrag = null; // { type, nodeId, dx, dy, checkpointed } while a shape is being dragged
 window.addEventListener('mouseup', () => {
+  const m = diagramMarquee;
+  diagramMarquee = null;
+  if (m){
+    const type = m.type;
+    if (!m.moved){
+      if (!m.additive){ diagramSelected[type] = null; diagramGroup[type] = new Set(); }
+    } else {
+      const rx = Math.min(m.x0, m.x1), ry = Math.min(m.y0, m.y1), rw = Math.abs(m.x1 - m.x0), rh = Math.abs(m.y1 - m.y0);
+      const hit = diagramState[type].nodes.filter(n => {
+        const sz = DIAGRAM_SHAPE_SIZE[n.kind];
+        return n.x < rx + rw && n.x + sz.w > rx && n.y < ry + rh && n.y + sz.h > ry;
+      }).map(n => n.id);
+      diagramSetNodeSelection(type, m.additive ? [...new Set([...m.base, ...hit])] : hit);
+    }
+    refreshDiagramCanvas(type);
+    return;
+  }
   const finished = diagramDrag;
   diagramDrag = null;
+  if (finished && finished.collapseTo && !finished.checkpointed){
+    diagramSetNodeSelection(finished.type, [finished.collapseTo]);
+    refreshDiagramCanvas(finished.type);
+    return;
+  }
   // After reordering messages, redraw so their numbers follow the new order.
   if (finished && finished.edgeId && finished.checkpointed) refreshDiagramCanvas(finished.type);
 });
@@ -2327,6 +2371,45 @@ async function ucCreateRequirements(node, btn){
   await loadProject();
 }
 
+// Removes every selected shape (with the lines attached to them), or the selected line.
+function diagramDeleteSelection(type){
+  const ids = new Set(diagramSelectedNodeIds(type));
+  const sel = diagramSelected[type];
+  if (!ids.size && !(sel && sel.kind === 'edge')) return;
+  const state = diagramState[type];
+  diagramCheckpoint(type);
+  if (ids.size){
+    state.nodes = state.nodes.filter(n => !ids.has(n.id));
+    state.edges = state.edges.filter(e => !ids.has(e.from) && !ids.has(e.to));
+  } else {
+    state.edges = state.edges.filter(e => e.id !== sel.id);
+  }
+  diagramSelected[type] = null; diagramGroup[type] = new Set();
+  diagramDirty[type] = true;
+  updateDiagramDirtyNote(type);
+  refreshDiagramCanvas(type);
+}
+
+// Arrow-key nudge of the selected shapes. Holding a key down is one undo step, not one per repeat.
+let diagramLastNudge = 0;
+function diagramNudge(type, dx, dy){
+  const nodes = diagramSelectedNodeIds(type).map(id => diagramNodeById(type, id)).filter(Boolean);
+  if (!nodes.length) return;
+  if (type === 'sequence') dy = 0;
+  nodes.forEach(n => {
+    const sz = DIAGRAM_SHAPE_SIZE[n.kind];
+    dx = Math.max(-n.x, Math.min(DIAGRAM_CANVAS_W - sz.w - n.x, dx));
+    dy = Math.max(-n.y, Math.min(diagramCanvasH(type) - sz.h - n.y, dy));
+  });
+  if (!dx && !dy) return;
+  if (Date.now() - diagramLastNudge > 700) diagramCheckpoint(type);
+  diagramLastNudge = Date.now();
+  nodes.forEach(n => { n.x += dx; n.y += dy; });
+  diagramDirty[type] = true;
+  updateDiagramDirtyNote(type);
+  refreshDiagramCanvas(type, true);
+}
+
 function diagramKindOptions(type, selectedKind){
   return DIAGRAM_EDGE_KINDS_BY_TYPE[type].map(k => `<option value="${k}" ${k === selectedKind ? 'selected' : ''}>${t('project.edge_' + k)}</option>`).join('');
 }
@@ -2348,7 +2431,12 @@ function refreshDiagramChrome(type, skipInspector){
   const edge = sel && sel.kind === 'edge' ? diagramState[type].edges.find(e => e.id === sel.id) : null;
   // Always visible (with a hint) so selecting a line never shifts the canvas under the pointer mid-gesture.
   box.classList.toggle('is-idle', !edge);
-  if (!edge){ box.hidden = false; box.innerHTML = '<span class="credits-note">' + t('project.diagram_inspector_hint') + '</span>'; return; }
+  if (!edge){
+    const n = diagramGroup[type].size;
+    box.hidden = false;
+    box.innerHTML = '<span class="credits-note">' + (n >= 2 ? t('project.diagram_group_selected').replace('{n}', n) : t('project.diagram_inspector_hint')) + '</span>';
+    return;
+  }
   const from = diagramNodeById(type, edge.from), to = diagramNodeById(type, edge.to);
   const kind = diagramEdgeKind(edge);
   box.hidden = false;
@@ -2464,7 +2552,7 @@ function wireDiagramCanvasInteractions(type){
           const edge = { id: 'e' + Math.random().toString(36).slice(2,9), from: diagramConnectFrom[type], to: nodeId, kind: diagramLinkKind[type] };
           if (type === 'sequence') edge.y = Math.min(diagramCanvasH('sequence') - 40, Math.max(70, ...state.edges.map(e => e.y == null ? 110 : e.y)) + 50);
           state.edges.push(edge);
-          diagramSelected[type] = { kind: 'edge', id: edge.id }; // so its label can be typed straight away
+          diagramSelectEdge(type, edge.id); // so its label can be typed straight away
           markDirty();
         }
         diagramMode[type] = 'idle';
@@ -2472,11 +2560,25 @@ function wireDiagramCanvasInteractions(type){
         refreshDiagramCanvas(type);
         return;
       }
-      diagramSelected[type] = { kind: 'node', id: nodeId };
-      const p = toSvgPoint(e);
-      const node = diagramNodeById(type, nodeId);
+      if (e.shiftKey || e.ctrlKey || e.metaKey){
+        // Add this shape to / remove it from the selection; no dragging on a modifier-click.
+        const ids = new Set(diagramSelectedNodeIds(type));
+        if (ids.has(nodeId)) ids.delete(nodeId); else ids.add(nodeId);
+        diagramSetNodeSelection(type, [...ids]);
+        diagramDrag = null;
+        refreshDiagramCanvas(type);
+        return;
+      }
+      const current = diagramSelectedNodeIds(type);
+      const inGroup = current.length >= 2 && current.includes(nodeId);
+      const dragIds = inGroup ? current : [nodeId];
+      if (!inGroup) diagramSetNodeSelection(type, [nodeId]);
       // Kept outside this closure: the refresh below swaps in a new SVG (and a new closure) mid-gesture.
-      diagramDrag = { type, nodeId, dx: p.x - node.x, dy: p.y - node.y, checkpointed: false };
+      // A plain click (no movement) on a shape inside a group collapses the selection to that shape on mouse-up.
+      diagramDrag = {
+        type, ids: dragIds, p0: toSvgPoint(e), lastDx: 0, lastDy: 0, checkpointed: false, collapseTo: inGroup ? nodeId : null,
+        origins: Object.fromEntries(dragIds.map(id => { const n = diagramNodeById(type, id); return [id, { x: n.x, y: n.y }]; }))
+      };
       refreshDiagramCanvas(type);
     });
     g.addEventListener('dblclick', () => renameDiagramNode(type, nodeId));
@@ -2484,7 +2586,7 @@ function wireDiagramCanvasInteractions(type){
 
   svg.querySelectorAll('.diagram-edge, .diagram-edge-hit').forEach(line => {
     line.addEventListener('click', () => {
-      diagramSelected[type] = { kind: 'edge', id: line.dataset.edgeId };
+      diagramSelectEdge(type, line.dataset.edgeId);
       refreshDiagramCanvas(type);
     });
   });
@@ -2495,7 +2597,7 @@ function wireDiagramCanvasInteractions(type){
       e.preventDefault();
       const edge = state.edges.find(x => x.id === line.dataset.edgeId);
       if (!edge) return;
-      diagramSelected[type] = { kind: 'edge', id: edge.id };
+      diagramSelectEdge(type, edge.id);
       diagramDrag = { type, edgeId: edge.id, dy: toSvgPoint(e).y - (edge.y == null ? 110 : edge.y), checkpointed: false };
       refreshDiagramCanvas(type);
     }));
@@ -2518,21 +2620,45 @@ function wireDiagramCanvasInteractions(type){
       return;
     }
     const p = toSvgPoint(e);
-    const node = diagramNodeById(type, drag.nodeId);
-    if (!node) return;
-    const nx = Math.max(0, Math.min(DIAGRAM_CANVAS_W - DIAGRAM_SHAPE_SIZE[node.kind].w, p.x - drag.dx));
-    const ny = type === 'sequence' ? node.y : Math.max(0, Math.min(diagramCanvasH(type) - DIAGRAM_SHAPE_SIZE[node.kind].h, p.y - drag.dy)); // participants only slide sideways
-    if (nx === node.x && ny === node.y) return;
+    const nodes = drag.ids.map(id => diagramNodeById(type, id)).filter(Boolean);
+    if (!nodes.length) return;
+    // Movement since the grab, limited so that no shape in the group leaves the canvas.
+    let ddx = p.x - drag.p0.x, ddy = type === 'sequence' ? 0 : p.y - drag.p0.y; // participants only slide sideways
+    nodes.forEach(n => {
+      const o = drag.origins[n.id], sz = DIAGRAM_SHAPE_SIZE[n.kind];
+      ddx = Math.max(-o.x, Math.min(DIAGRAM_CANVAS_W - sz.w - o.x, ddx));
+      if (type !== 'sequence') ddy = Math.max(-o.y, Math.min(diagramCanvasH(type) - sz.h - o.y, ddy));
+    });
+    if (ddx === drag.lastDx && ddy === drag.lastDy) return;
     if (!drag.checkpointed){ diagramCheckpoint(type); drag.checkpointed = true; refreshDiagramChrome(type, true); }
-    node.x = nx; node.y = ny;
+    drag.lastDx = ddx; drag.lastDy = ddy;
+    nodes.forEach(n => {
+      n.x = drag.origins[n.id].x + ddx; n.y = drag.origins[n.id].y + ddy;
+      const g = svg.querySelector('.diagram-node[data-node-id="' + n.id + '"]');
+      if (g) g.setAttribute('transform', 'translate(' + n.x + ',' + n.y + ')');
+      moveConnectedEdges(n.id);
+    });
     markDirty();
-    const g = svg.querySelector('.diagram-node[data-node-id="' + drag.nodeId + '"]');
-    if (g) g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
-    moveConnectedEdges(drag.nodeId);
   });
 
+  // Drag on empty canvas to draw a selection box (hold Shift/Ctrl to add to the current selection). A plain click clears it.
   svg.addEventListener('mousedown', (e) => {
-    if (e.target === svg) { diagramSelected[type] = null; refreshDiagramCanvas(type); }
+    if (e.target !== svg) return;
+    e.preventDefault();
+    const p = toSvgPoint(e);
+    diagramMarquee = { type, x0: p.x, y0: p.y, x1: p.x, y1: p.y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: new Set(diagramSelectedNodeIds(type)), moved: false };
+  });
+  svg.addEventListener('mousemove', (e) => {
+    const m = diagramMarquee;
+    if (!m || m.type !== type) return;
+    const p = toSvgPoint(e);
+    m.x1 = p.x; m.y1 = p.y;
+    if (Math.hypot(m.x1 - m.x0, m.y1 - m.y0) > 6) m.moved = true;
+    if (!m.moved) return;
+    let box = svg.querySelector('.diagram-marquee');
+    if (!box){ box = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); box.setAttribute('class', 'diagram-marquee'); svg.appendChild(box); }
+    box.setAttribute('x', Math.min(m.x0, m.x1)); box.setAttribute('y', Math.min(m.y0, m.y1));
+    box.setAttribute('width', Math.abs(m.x1 - m.x0)); box.setAttribute('height', Math.abs(m.y1 - m.y0));
   });
 }
 
@@ -2556,6 +2682,7 @@ function wireDiagramToolbars(){
 
   content.querySelectorAll('[data-diagram-connect]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.diagramType;
+    if (diagramGroup[type].size >= 2){ alert(t('project.diagram_single_hint')); return; }
     if (!diagramSelected[type] || diagramSelected[type].kind !== 'node'){
       alert(t('project.diagram_connect_hint'));
       return;
@@ -2573,19 +2700,34 @@ function wireDiagramToolbars(){
   if (!window.__diagramKeysBound){
     window.__diagramKeysBound = true;
     document.addEventListener('keydown', (e) => {
-      if (!DIAGRAM_TYPES.includes(activeTab)) return;
-      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (!DIAGRAM_TYPES.includes(activeTab) || e.altKey) return;
       const tag = (e.target && e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey){ e.preventDefault(); diagramUndo(activeTab); }
-      else if (key === 'y' || (key === 'z' && e.shiftKey)){ e.preventDefault(); diagramRedo(activeTab); }
+      const type = activeTab, key = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+      if (mod){
+        if (key === 'z' && !e.shiftKey){ e.preventDefault(); diagramUndo(type); }
+        else if (key === 'y' || (key === 'z' && e.shiftKey)){ e.preventDefault(); diagramRedo(type); }
+        else if (key === 'a'){ e.preventDefault(); diagramSetNodeSelection(type, diagramState[type].nodes.map(n => n.id)); refreshDiagramCanvas(type); }
+        return;
+      }
+      const hasSelection = diagramSelectedNodeIds(type).length > 0 || (diagramSelected[type] && diagramSelected[type].kind === 'edge');
+      if (key === 'delete' || key === 'backspace'){ if (hasSelection){ e.preventDefault(); diagramDeleteSelection(type); } }
+      else if (key === 'escape'){
+        diagramMode[type] = 'idle'; diagramConnectFrom[type] = null;
+        diagramSelected[type] = null; diagramGroup[type] = new Set();
+        refreshDiagramCanvas(type);
+      } else if (key.startsWith('arrow') && diagramSelectedNodeIds(type).length){
+        e.preventDefault();
+        const step = e.shiftKey ? 50 : 10;
+        diagramNudge(type, key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0, key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0);
+      }
     });
   }
 
   content.querySelectorAll('[data-diagram-rename]').forEach(btn => btn.addEventListener('click', () => {
     const type = btn.dataset.diagramType;
     const sel = diagramSelected[type];
+    if (diagramGroup[type].size >= 2){ alert(t('project.diagram_single_hint')); return; }
     if (!sel || sel.kind !== 'node'){
       alert(t('project.diagram_rename_hint'));
       return;
@@ -2593,23 +2735,7 @@ function wireDiagramToolbars(){
     renameDiagramNode(type, sel.id);
   }));
 
-  content.querySelectorAll('[data-diagram-delete]').forEach(btn => btn.addEventListener('click', () => {
-    const type = btn.dataset.diagramType;
-    const sel = diagramSelected[type];
-    if (!sel) return;
-    const state = diagramState[type];
-    diagramCheckpoint(type);
-    if (sel.kind === 'node'){
-      state.nodes = state.nodes.filter(n => n.id !== sel.id);
-      state.edges = state.edges.filter(e => e.from !== sel.id && e.to !== sel.id);
-    } else {
-      state.edges = state.edges.filter(e => e.id !== sel.id);
-    }
-    diagramSelected[type] = null;
-    diagramDirty[type] = true;
-    updateDiagramDirtyNote(type);
-    refreshDiagramCanvas(type);
-  }));
+  content.querySelectorAll('[data-diagram-delete]').forEach(btn => btn.addEventListener('click', () => diagramDeleteSelection(btn.dataset.diagramType)));
 
   content.querySelectorAll('[data-diagram-save]').forEach(btn => btn.addEventListener('click', async () => {
     const type = btn.dataset.diagramType;
@@ -2815,10 +2941,10 @@ function diagramContentBox(type){
 function diagramSvgForReport(type){
   const box = diagramContentBox(type);
   if (!box) return '';
-  const prevSel = diagramSelected[type];
-  diagramSelected[type] = null;
+  const prevSel = diagramSelected[type], prevGroup = diagramGroup[type];
+  diagramSelected[type] = null; diagramGroup[type] = new Set();
   let svg = buildDiagramSvgHTML(type, 1);
-  diagramSelected[type] = prevSel;
+  diagramSelected[type] = prevSel; diagramGroup[type] = prevGroup;
   return svg
     .replace(/viewBox="[^"]*"/, `viewBox="${box.x} ${box.y} ${box.w} ${box.h}"`)
     .replace(/ width="[\d.]+" height="[\d.]+"/, ' style="width:100%;height:auto;max-height:150mm"');

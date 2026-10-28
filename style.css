@@ -1245,3 +1245,6 @@ summary:focus-visible,[tabindex]:focus-visible{
 .chip.sev-medium{background:#FFF6E9;border-color:#F0DDB8;color:#8A5A18;}
 .chip.sev-low{background:var(--mist);color:var(--ink-soft);}
 .se-ai-bar .spacer{flex:1;}
+
+/* ---- diagram multi-select ---- */
+.diagram-marquee{fill:rgba(62,143,208,.12);stroke:var(--blue);stroke-width:1;stroke-dasharray:4 3;pointer-events:none;}
