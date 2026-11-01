@@ -24,7 +24,7 @@ en: {
   "hero.headline_1":"Stop scrolling. Start","hero.headline_em":"building","hero.headline_2":"— together.",
   "hero.lede":"Together is a place to turn an idea into a project. Pool money, time, and tools with people, companies, nonprofits, and government bodies who want to help build it — instead of just watching a feed.",
   "hero.cta_primary":"Get started free","hero.cta_secondary":"See the projects",
-  "hero.note":"Free to start · $2 for the full toolkit",
+  "hero.note":"Free to start · $2/month for the full toolkit",
 
   "feed.eyebrow":"Live projects","feed.heading":"What people are building right now.","feed.cta":"Go to all projects →",
   "feed.posts_empty":"No updates yet — check back soon.",
@@ -66,10 +66,10 @@ en: {
   "pricing.basic.title":"Basic","pricing.basic.tag":"One project, done properly.",
   "pricing.basic.li1":"1 active project","pricing.basic.li2":"Share it on the feed, and by link","pricing.basic.li3":"Receive and accept proposals",
   "pricing.basic.li4":"Set goals and requirements","pricing.basic.li5":"1 WhatsApp group","pricing.basic.cta":"Start free",
-  "pricing.premium.title":"Premium","pricing.premium.one_time":"one-time","pricing.premium.tag":"For managers running more than one thing.",
+  "pricing.premium.title":"Premium","pricing.premium.per_month":"/month","pricing.premium.tag":"For managers running more than one thing.",
   "pricing.premium.li1":"Everything in Basic","pricing.premium.li2":"Unlimited projects",
   "pricing.premium.li3":"Full workspace & payment integrations","pricing.premium.li4":"AI dashboard tools",
-  "pricing.premium.cta":"Go Premium","pricing.premium.fine":"One-time $2 via PayPal. Log in or sign up first.",
+  "pricing.premium.cta":"Go Premium","pricing.premium.fine":"$2/month, billed securely by Stripe. Cancel anytime. Log in or sign up first.",
 
   "final.eyebrow":"Join efforts","final.heading":"Have something worth building? Start together.","final.cta":"Create your account",
 
@@ -132,7 +132,7 @@ en: {
   "feed.archive_eyebrow":"Been here","feed.archive_heading":"Finished projects","feed.scroll_left":"Scroll left","feed.scroll_right":"Scroll right",
   "feed.guest_banner_1":"Browsing as a guest.","feed.guest_banner_login":"Log in","feed.guest_banner_or":"or",
   "feed.guest_banner_signup":"sign up free","feed.guest_banner_2":"to support a project or start your own.",
-  "feed.limit_reached_1":"You've used your free project.","feed.limit_reached_2":"for $2 (one-time) to post more.",
+  "feed.limit_reached_1":"You've used your free project.","feed.limit_reached_2":"for $2/month to post more.",
   "feed.empty_none":"No projects yet — be the first to start one.","feed.empty_filtered":"No projects match this filter.","feed.load_more":"Load more",
   "feed.collaborating":"collaborating","feed.credits_from":"in supporter credits from","feed.credits_person":"person",
   "feed.credits_people":"people","feed.credits_note":"Self-reported — sent directly via PayPal, not verified by us.",
@@ -503,7 +503,7 @@ es: {
   "hero.headline_1":"Deja de hacer scroll. Empieza a","hero.headline_em":"construir","hero.headline_2":"— juntos.",
   "hero.lede":"Together es un lugar para convertir una idea en un proyecto. Reúne dinero, tiempo y herramientas con personas, empresas, ONG y organismos públicos que quieren ayudar a construirlo, en lugar de solo mirar un feed.",
   "hero.cta_primary":"Empieza gratis","hero.cta_secondary":"Ver los proyectos",
-  "hero.note":"Gratis para empezar · $2 por todas las herramientas",
+  "hero.note":"Gratis para empezar · $2/mes por todas las herramientas",
 
   "feed.eyebrow":"Proyectos en vivo","feed.heading":"Esto es lo que la gente está construyendo ahora.","feed.cta":"Ver todos los proyectos →",
   "feed.posts_empty":"Aún no hay novedades — vuelve pronto.",
@@ -545,10 +545,10 @@ es: {
   "pricing.basic.title":"Básico","pricing.basic.tag":"Un proyecto, bien hecho.",
   "pricing.basic.li1":"1 proyecto activo","pricing.basic.li2":"Compártelo en el feed y por enlace","pricing.basic.li3":"Recibe y acepta propuestas",
   "pricing.basic.li4":"Define metas y requisitos","pricing.basic.li5":"1 grupo de WhatsApp","pricing.basic.cta":"Empezar gratis",
-  "pricing.premium.title":"Premium","pricing.premium.one_time":"pago único","pricing.premium.tag":"Para gestores con más de un proyecto.",
+  "pricing.premium.title":"Premium","pricing.premium.per_month":"/mes","pricing.premium.tag":"Para gestores con más de un proyecto.",
   "pricing.premium.li1":"Todo lo del plan Básico","pricing.premium.li2":"Proyectos ilimitados",
   "pricing.premium.li3":"Integraciones completas de espacios de trabajo y pagos","pricing.premium.li4":"Herramientas de panel con IA",
-  "pricing.premium.cta":"Hazte Premium","pricing.premium.fine":"$2 de pago único vía PayPal. Inicia sesión o regístrate primero.",
+  "pricing.premium.cta":"Hazte Premium","pricing.premium.fine":"$2/mes, cobrados de forma segura por Stripe. Cancela cuando quieras. Inicia sesión o regístrate primero.",
 
   "final.eyebrow":"Une esfuerzos","final.heading":"¿Tienes algo que valga la pena construir? Empecemos juntos.","final.cta":"Crea tu cuenta",
 
@@ -611,7 +611,7 @@ es: {
   "feed.archive_eyebrow":"Pasaron por aquí","feed.archive_heading":"Proyectos finalizados","feed.scroll_left":"Desplazar a la izquierda","feed.scroll_right":"Desplazar a la derecha",
   "feed.guest_banner_1":"Navegando como invitado.","feed.guest_banner_login":"Inicia sesión","feed.guest_banner_or":"o",
   "feed.guest_banner_signup":"regístrate gratis","feed.guest_banner_2":"para apoyar un proyecto o iniciar el tuyo.",
-  "feed.limit_reached_1":"Ya usaste tu proyecto gratuito.","feed.limit_reached_2":"por $2 (pago único) para publicar más.",
+  "feed.limit_reached_1":"Ya usaste tu proyecto gratuito.","feed.limit_reached_2":"por $2/mes para publicar más.",
   "feed.empty_none":"Aún no hay proyectos — sé el primero en iniciar uno.","feed.empty_filtered":"Ningún proyecto coincide con este filtro.","feed.load_more":"Cargar más",
   "feed.collaborating":"colaborando","feed.credits_from":"en créditos de aportantes de","feed.credits_person":"persona",
   "feed.credits_people":"personas","feed.credits_note":"Autoinformado — enviado directamente vía PayPal, no verificado por nosotros.",
@@ -982,7 +982,7 @@ fr: {
   "hero.headline_1":"Arrêtez de défiler. Commencez à","hero.headline_em":"construire","hero.headline_2":"— ensemble.",
   "hero.lede":"Together est un endroit pour transformer une idée en projet. Réunissez argent, temps et outils avec des personnes, entreprises, associations et organismes publics qui veulent aider à le construire — plutôt que de simplement regarder un flux.",
   "hero.cta_primary":"Commencer gratuitement","hero.cta_secondary":"Voir les projets",
-  "hero.note":"Gratuit pour commencer · $2 pour tous les outils",
+  "hero.note":"Gratuit pour commencer · $2/mois pour tous les outils",
 
   "feed.eyebrow":"Projets en direct","feed.heading":"Ce que les gens construisent en ce moment.","feed.cta":"Voir tous les projets →",
   "feed.posts_empty":"Pas encore de nouveautés — revenez bientôt.",
@@ -1024,10 +1024,10 @@ fr: {
   "pricing.basic.title":"Basique","pricing.basic.tag":"Un projet, bien fait.",
   "pricing.basic.li1":"1 projet actif","pricing.basic.li2":"Partagez-le dans le flux, et par lien","pricing.basic.li3":"Recevez et acceptez des propositions",
   "pricing.basic.li4":"Définissez des objectifs et des besoins","pricing.basic.li5":"1 groupe WhatsApp","pricing.basic.cta":"Commencer gratuitement",
-  "pricing.premium.title":"Premium","pricing.premium.one_time":"paiement unique","pricing.premium.tag":"Pour les gestionnaires de plusieurs projets.",
+  "pricing.premium.title":"Premium","pricing.premium.per_month":"/mois","pricing.premium.tag":"Pour les gestionnaires de plusieurs projets.",
   "pricing.premium.li1":"Tout ce qui est inclus dans Basique","pricing.premium.li2":"Projets illimités",
   "pricing.premium.li3":"Intégrations complètes des espaces de travail et des paiements","pricing.premium.li4":"Outils de tableau de bord IA",
-  "pricing.premium.cta":"Passer à Premium","pricing.premium.fine":"$2 en paiement unique via PayPal. Connectez-vous ou inscrivez-vous d'abord.",
+  "pricing.premium.cta":"Passer à Premium","pricing.premium.fine":"$2/mois, facturés en toute sécurité par Stripe. Annulez à tout moment. Connectez-vous ou inscrivez-vous d'abord.",
 
   "final.eyebrow":"Unissez vos efforts","final.heading":"Vous avez quelque chose qui mérite d'être construit ? Commençons ensemble.","final.cta":"Créez votre compte",
 
@@ -1090,7 +1090,7 @@ fr: {
   "feed.archive_eyebrow":"Déjà passés par ici","feed.archive_heading":"Projets terminés","feed.scroll_left":"Défiler à gauche","feed.scroll_right":"Défiler à droite",
   "feed.guest_banner_1":"Navigation en tant qu'invité.","feed.guest_banner_login":"Connectez-vous","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"inscrivez-vous gratuitement","feed.guest_banner_2":"pour soutenir un projet ou lancer le vôtre.",
-  "feed.limit_reached_1":"Vous avez utilisé votre projet gratuit.","feed.limit_reached_2":"pour $2 (paiement unique) afin d'en publier plus.",
+  "feed.limit_reached_1":"Vous avez utilisé votre projet gratuit.","feed.limit_reached_2":"pour $2/mois afin d'en publier plus.",
   "feed.empty_none":"Pas encore de projets — soyez le premier à en lancer un.","feed.empty_filtered":"Aucun projet ne correspond à ce filtre.","feed.load_more":"Charger plus",
   "feed.collaborating":"collaborateurs","feed.credits_from":"en crédits de soutien de la part de","feed.credits_person":"personne",
   "feed.credits_people":"personnes","feed.credits_note":"Auto-déclaré — envoyé directement via PayPal, non vérifié par nous.",
@@ -1461,7 +1461,7 @@ pt: {
   "hero.headline_1":"Pare de rolar a tela. Comece a","hero.headline_em":"construir","hero.headline_2":"— juntos.",
   "hero.lede":"Together é um lugar para transformar uma ideia em projeto. Reúna dinheiro, tempo e ferramentas com pessoas, empresas, ONGs e órgãos públicos que querem ajudar a construí-lo — em vez de apenas assistir a um feed.",
   "hero.cta_primary":"Comece grátis","hero.cta_secondary":"Ver os projetos",
-  "hero.note":"Grátis para começar · $2 por todas as ferramentas",
+  "hero.note":"Grátis para começar · $2/mês por todas as ferramentas",
 
   "feed.eyebrow":"Projetos ao vivo","feed.heading":"O que as pessoas estão construindo agora.","feed.cta":"Ver todos os projetos →",
   "feed.posts_empty":"Ainda não há novidades — volte em breve.",
@@ -1503,10 +1503,10 @@ pt: {
   "pricing.basic.title":"Básico","pricing.basic.tag":"Um projeto, feito direito.",
   "pricing.basic.li1":"1 projeto ativo","pricing.basic.li2":"Compartilhe no feed e por link","pricing.basic.li3":"Receba e aceite propostas",
   "pricing.basic.li4":"Defina metas e requisitos","pricing.basic.li5":"1 grupo de WhatsApp","pricing.basic.cta":"Começar grátis",
-  "pricing.premium.title":"Premium","pricing.premium.one_time":"pagamento único","pricing.premium.tag":"Para gestores com mais de um projeto.",
+  "pricing.premium.title":"Premium","pricing.premium.per_month":"/mês","pricing.premium.tag":"Para gestores com mais de um projeto.",
   "pricing.premium.li1":"Tudo do plano Básico","pricing.premium.li2":"Projetos ilimitados",
   "pricing.premium.li3":"Integrações completas de espaços de trabalho e pagamentos","pricing.premium.li4":"Ferramentas de painel com IA",
-  "pricing.premium.cta":"Assinar Premium","pricing.premium.fine":"Pagamento único de $2 via PayPal. Entre ou cadastre-se primeiro.",
+  "pricing.premium.cta":"Assinar Premium","pricing.premium.fine":"$2/mês, cobrados com segurança pelo Stripe. Cancele quando quiser. Entre ou cadastre-se primeiro.",
 
   "final.eyebrow":"Junte esforços","final.heading":"Tem algo que vale a pena construir? Vamos começar juntos.","final.cta":"Crie sua conta",
 
@@ -1569,7 +1569,7 @@ pt: {
   "feed.archive_eyebrow":"Passaram por aqui","feed.archive_heading":"Projetos finalizados","feed.scroll_left":"Rolar para a esquerda","feed.scroll_right":"Rolar para a direita",
   "feed.guest_banner_1":"Navegando como visitante.","feed.guest_banner_login":"Entre","feed.guest_banner_or":"ou",
   "feed.guest_banner_signup":"cadastre-se grátis","feed.guest_banner_2":"para apoiar um projeto ou iniciar o seu.",
-  "feed.limit_reached_1":"Você já usou seu projeto gratuito.","feed.limit_reached_2":"por $2 (pagamento único) para publicar mais.",
+  "feed.limit_reached_1":"Você já usou seu projeto gratuito.","feed.limit_reached_2":"por $2/mês para publicar mais.",
   "feed.empty_none":"Ainda não há projetos — seja o primeiro a iniciar um.","feed.empty_filtered":"Nenhum projeto corresponde a este filtro.","feed.load_more":"Carregar mais",
   "feed.collaborating":"colaborando","feed.credits_from":"em créditos de apoiadores de","feed.credits_person":"pessoa",
   "feed.credits_people":"pessoas","feed.credits_note":"Autodeclarado — enviado diretamente via PayPal, não verificado por nós.",
