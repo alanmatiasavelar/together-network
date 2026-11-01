@@ -1248,3 +1248,35 @@ summary:focus-visible,[tabindex]:focus-visible{
 
 /* ---- diagram multi-select ---- */
 .diagram-marquee{fill:rgba(62,143,208,.12);stroke:var(--blue);stroke-width:1;stroke-dasharray:4 3;pointer-events:none;}
+
+/* ---- admin growth funnel ---- */
+.fn-controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:12px 0 16px;}
+.fn-seg{display:inline-flex;background:var(--mist);border-radius:100px;padding:3px;gap:2px;}
+.fn-seg button{border:0;background:transparent;padding:7px 14px;border-radius:100px;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer;}
+.fn-seg button.active{background:var(--panel);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.fn-check{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--ink-soft);}
+.fn-check input{width:auto;}
+.fn-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:10px;}
+.fn-card{border:1px solid var(--line);border-radius:12px;padding:14px 16px 16px;background:var(--panel);}
+.fn-card h3{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:8px;}
+.fn-dim{opacity:.55;transition:opacity .15s;}
+.fn-row{display:grid;grid-template-columns:minmax(130px,1.4fr) 2fr 40px 48px;gap:10px;align-items:center;padding:6px 0;font-size:13.5px;}
+.fn-label{display:flex;flex-direction:column;gap:3px;}
+.fn-worst{align-self:flex-start;background:#FBEAEA;border-color:#F0C6C3;color:#B3261E;}
+.fn-bar{background:var(--mist);height:14px;border-radius:100px;overflow:hidden;}
+.fn-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--orange));border-radius:100px;}
+.fn-fill.worst{background:#E5645A;}
+.fn-count{font-weight:700;text-align:right;}
+.fn-pct{color:var(--ink-soft);text-align:right;font-size:12.5px;}
+.fn-fact{margin:10px 0 0;font-size:13.5px;color:var(--ink-soft);}
+.fn-sub{font-size:15px;margin:22px 0 10px;}
+.fn-table-wrap{overflow-x:auto;}
+.fn-table{border-collapse:collapse;width:100%;font-size:13px;}
+.fn-table th,.fn-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;}
+.fn-table th{font-weight:600;color:var(--ink-soft);}
+.fn-cell{position:relative;display:block;min-width:90px;height:20px;}
+.fn-cellbar{position:absolute;left:0;top:3px;bottom:3px;background:#EAF3FB;border-radius:4px;}
+.fn-cellnum{position:relative;padding-left:6px;font-weight:600;}
+.fn-defs{margin-top:16px;font-size:13px;}
+.fn-defs summary{cursor:pointer;color:var(--blue-deep);font-weight:600;}
+@media (max-width:560px){ .fn-row{grid-template-columns:1fr 1fr 36px 44px;} }

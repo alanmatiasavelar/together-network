@@ -74,6 +74,12 @@ let approved = [];
 let flagged = [];
 let stats = null;
 let loaded = false;
+// Growth funnel (see supabase/migrations/admin_funnel.sql). Window in days, 0 = all time.
+let funnel = null;
+let funnelError = '';
+let funnelLoading = false;
+let funnelDays = 0;
+let funnelHideInternal = true;
 
 function renderNav(){
   if (currentUser){
@@ -155,6 +161,92 @@ async function loadAdmin(){
   ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   loaded = true;
   render();
+  if (!funnel && !funnelLoading && !funnelError) loadFunnel();
+}
+
+async function loadFunnel(){
+  funnelLoading = true; funnelError = '';
+  render();
+  const { data, error } = await supabaseClient.rpc('admin_funnel', { p_days: funnelDays, p_exclude_internal: funnelHideInternal });
+  funnelLoading = false;
+  if (error){ funnel = null; funnelError = error.message; } else funnel = data;
+  render();
+}
+
+// One funnel as bars. Each step shows its count and the share of the PREVIOUS step; the weakest step
+// (with enough people to mean something) is flagged.
+function funnelBarsHTML(steps, keyPrefix){
+  const first = steps.length ? steps[0].count : 0;
+  let worst = -1, worstRate = 2;
+  steps.forEach((st, i) => {
+    if (i === 0 || steps[i - 1].count < 3) return;
+    const rate = st.count / steps[i - 1].count;
+    if (rate < worstRate){ worstRate = rate; worst = i; }
+  });
+  return steps.map((st, i) => {
+    const prev = i ? steps[i - 1].count : null;
+    const pct = i === 0 ? '' : (prev ? Math.round((st.count / prev) * 100) + '%' : '—');
+    const width = first ? Math.max((st.count / first) * 100, st.count ? 3 : 0) : 0;
+    return `<div class="fn-row">
+      <div class="fn-label">${t(keyPrefix + st.key)}${i === worst ? `<span class="chip fn-worst">${t('admin.fn_biggest')}</span>` : ''}</div>
+      <div class="fn-bar"><div class="fn-fill${i === worst ? ' worst' : ''}" style="width:${width}%"></div></div>
+      <div class="fn-count">${st.count}</div>
+      <div class="fn-pct" title="${t('admin.fn_pct_prev')}">${pct}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderFunnel(){
+  const wins = [[7, 'admin.fn_win_7'], [30, 'admin.fn_win_30'], [90, 'admin.fn_win_90'], [0, 'admin.fn_win_all']];
+  let html = `<div class="section-block" id="funnelSection"><h2>${t('admin.fn_heading')}</h2><p class="credits-note">${t('admin.fn_sub')}</p>
+    <div class="fn-controls">
+      <div class="fn-seg" role="group">${wins.map(([d, key]) => `<button type="button" data-fn-days="${d}" class="${funnelDays === d ? 'active' : ''}">${t(key)}</button>`).join('')}</div>
+      <label class="fn-check"><input type="checkbox" data-fn-exclude ${funnelHideInternal ? 'checked' : ''}> ${t('admin.fn_exclude')}</label>
+    </div>`;
+  if (funnelError) return html + `<p class="form-msg error">${t('admin.fn_error')} ${escapeHTML(funnelError)}</p></div>`;
+  if (!funnel) return html + `<p class="credits-note">${t('admin.fn_loading')}</p></div>`;
+  // Anything unexpected from the server (or a bug below) must never take the rest of the admin page down with it.
+  const wellFormed = funnel.users && funnel.projects && Array.isArray(funnel.users.steps) && Array.isArray(funnel.projects.steps) && funnel.users.steps.length && funnel.projects.steps.length && Array.isArray(funnel.weekly);
+  if (!wellFormed) return html + `<p class="form-msg error">${t('admin.fn_error')}</p></div>`;
+  try { return html + renderFunnelBody(); } catch (err) { console.error('funnel render failed', err); return html + `<p class="form-msg error">${t('admin.fn_error')}</p></div>`; }
+}
+
+function renderFunnelBody(){
+  let html = '';
+  const u = funnel.users, p = funnel.projects;
+  const dim = funnelLoading ? ' fn-dim' : '';
+  html += `<div class="fn-grid${dim}">
+    <div class="fn-card"><h3>${t('admin.fn_people')}</h3>
+      ${u.steps[0].count ? funnelBarsHTML(u.steps, 'admin.fn_u_') : `<p class="credits-note">${t('admin.fn_no_data')}</p>`}
+      ${u.median_days_to_first_action != null ? `<p class="fn-fact">${t('admin.fn_median')}: <strong>${u.median_days_to_first_action} ${t('admin.fn_days')}</strong></p>` : ''}
+    </div>
+    <div class="fn-card"><h3>${t('admin.fn_projects')}</h3>
+      ${p.steps[0].count ? funnelBarsHTML(p.steps, 'admin.fn_p_') : `<p class="credits-note">${t('admin.fn_no_data')}</p>`}
+      <div class="card-row" style="margin-top:10px;">
+        <span class="chip">${t('admin.fn_p_set_up')}: ${p.set_up}</span>
+        <span class="chip">${t('admin.fn_p_funded')}: ${p.funded}</span>
+        <span class="chip">${t('admin.fn_p_finished')}: ${p.finished}</span>
+      </div>
+    </div>
+  </div>
+  <p class="credits-note">${t('admin.fn_small_numbers')}</p>`;
+
+  // Last 8 weeks, with a bar behind each number scaled to the busiest week of that column
+  const cols = [['signups', 'admin.fn_w_signups'], ['projects', 'admin.fn_w_projects'], ['join_requests', 'admin.fn_w_requests'], ['active_users', 'admin.fn_w_users'], ['active_projects', 'admin.fn_w_active_projects']];
+  const max = Object.fromEntries(cols.map(([k]) => [k, Math.max(1, ...funnel.weekly.map(w => w[k]))]));
+  html += `<h3 class="fn-sub">${t('admin.fn_trend')}</h3><div class="fn-table-wrap"><table class="fn-table"><thead><tr><th>${t('admin.fn_w_week')}</th>${cols.map(([, key]) => `<th>${t(key)}</th>`).join('')}</tr></thead><tbody>${
+    funnel.weekly.map(w => `<tr><td>${escapeHTML(w.week)}</td>${cols.map(([k]) => `<td><span class="fn-cell"><span class="fn-cellbar" style="width:${(w[k] / max[k]) * 100}%"></span><span class="fn-cellnum">${w[k]}</span></span></td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+
+  // People and projects worth a nudge
+  const list = (title, items, emptyKey, rowHTML) => `<div class="fn-card"><h3>${title} <span class="chip${items.length ? ' chip-warn' : ''}">${items.length}</span></h3>${items.length ? items.map(rowHTML).join('') : `<p class="credits-note">${t(emptyKey)}</p>`}</div>`;
+  html += `<h3 class="fn-sub">${t('admin.fn_attention')}</h3><div class="fn-grid">${
+    list(t('admin.fn_stuck'), funnel.stuck_users, 'admin.fn_stuck_empty', x => `<div class="notify-row"><span class="req-name">${escapeHTML(x.name || '')}
+        <a href="mailto:${escapeHTML(x.email || '')}">${escapeHTML(x.email || '')}</a>${x.confirmed ? '' : ` <span class="chip chip-warn">${t('admin.fn_unconfirmed')}</span>`}</span><span class="credits-note">${x.days}${t('admin.fn_days_short')}</span></div>`)}${
+    list(t('admin.fn_waiting'), funnel.waiting_requests, 'admin.fn_waiting_empty', x => `<div class="notify-row"><span class="req-name">${escapeHTML(x.name || '')} → <a href="learn-more.html?id=${encodeURIComponent(x.project_id)}">${escapeHTML(x.title || '')}</a></span><span class="credits-note">${x.days}${t('admin.fn_days_short')}</span></div>`)}${
+    list(t('admin.fn_idle'), funnel.idle_projects, 'admin.fn_idle_empty', x => `<div class="notify-row"><span class="req-name"><a href="learn-more.html?id=${encodeURIComponent(x.project_id)}">${escapeHTML(x.title || '')}</a> · ${escapeHTML(x.owner || '')}</span><span class="credits-note">${x.days}${t('admin.fn_days_short')}</span></div>`)}
+  </div>
+  <details class="fn-defs"><summary>${t('admin.fn_definitions')}</summary><p class="credits-note">${t('admin.fn_def_text')}</p></details></div>`;
+  return html;
 }
 
 function render(){
@@ -178,6 +270,8 @@ function render(){
       </div>
     </div>`;
   }
+
+  html += renderFunnel();
 
   html += `<div class="section-block"><h2>${t('admin.backlog_heading')}</h2><p class="credits-note">${t('admin.backlog_sub')}</p>`;
   if (backlog.length === 0){
@@ -267,6 +361,9 @@ function render(){
 }
 
 function wireEvents(){
+  content.querySelectorAll('[data-fn-days]').forEach(btn => btn.addEventListener('click', () => { funnelDays = Number(btn.dataset.fnDays); loadFunnel(); }));
+  const hideBox = content.querySelector('[data-fn-exclude]');
+  if (hideBox) hideBox.addEventListener('change', () => { funnelHideInternal = hideBox.checked; loadFunnel(); });
   content.querySelectorAll('[data-extend-backlog]').forEach(btn => btn.addEventListener('click', async () => {
     btn.disabled = true;
     await supabaseClient.rpc('admin_extend_email_backlog', { p_user_id: btn.dataset.extendBacklog });
