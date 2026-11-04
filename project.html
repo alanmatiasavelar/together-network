@@ -50,7 +50,7 @@
 
 <script src="config.js"></script>
 <script src="i18n.js"></script>
-<script src="gantt-print.js"></script>
+<script src="print-preview.js"></script>
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
 showConfigBannerIfNeeded();
@@ -145,9 +145,7 @@ function maybeAutoFitActiveTab(){
 function renderChartToolbar(prefix, zoom, exportMode){
   const pngBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>`;
   const svgBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-svg="${prefix}">⤓ ${t('chart.export_svg')}</button>`;
-  const printBtn = prefix === 'gantt'
-    ? `<button type="button" class="btn btn-ghost btn-small" data-print-gantt>🖨 ${t('gantt.print')}</button>`
-    : '';
+  const printBtn = `<button type="button" class="btn btn-ghost btn-small" data-print-chart="${prefix}">🖨 ${t('gantt.print')}</button>`;
   const exportBtn = (exportMode === 'svg' ? svgBtn : exportMode === 'both' ? pngBtn + svgBtn : pngBtn) + printBtn;
   return `
     <div class="chart-toolbar">
@@ -1239,14 +1237,14 @@ function buildGanttExportSvg(){
   const plotW = totalDays * dayWidth;
 
   // Activity names are never cut off. They wrap onto as many lines as needed
-  // (measured with the real font, see gpWrap in gantt-print.js), and the names
+  // (measured with the real font, see ptWrap in print-preview.js), and the names
   // column widens — up to 480px — when a name would otherwise need more than
   // 3 lines. Same rules as the print preview.
   let labelColW = 290;
-  while (labelColW < 480 && activities.some(a => gpWrap(a.title, labelColW - 18, 13, true).length > 3)) labelColW += 30;
+  while (labelColW < 480 && activities.some(a => ptWrap(a.title, labelColW - 18, 13, true).length > 3)) labelColW += 30;
   let rowTop = 0;
   const rows = activities.map(a => {
-    const lines = gpWrap(a.title, labelColW - 18, 13, true);
+    const lines = ptWrap(a.title, labelColW - 18, 13, true);
     const h = Math.max(40, lines.length * 15 + 25);
     const row = { a, lines, h, top: rowTop };
     rowTop += h;
@@ -4120,7 +4118,7 @@ function wireEvents(){
     if (btn.dataset.exportPng === 'gantt') exportGanttPng();
     else exportWbsPng();
   }));
-  content.querySelectorAll('[data-print-gantt]').forEach(btn => btn.addEventListener('click', openGanttPrintPreview));
+  content.querySelectorAll('[data-print-chart]').forEach(btn => btn.addEventListener("click", () => openPrintPreview(btn.dataset.printChart)));
   content.querySelectorAll('[data-export-svg]').forEach(btn => btn.addEventListener('click', () => {
     const prefix = btn.dataset.exportSvg;
     if (prefix === 'gantt') exportGanttSvg();

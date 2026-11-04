@@ -1306,9 +1306,9 @@ body.gp-open{overflow:hidden;}
 /* printing: only the generated pages */
 #printRoot{display:none;}
 @media print{
-  body.printing-gantt > *:not(#printRoot){display:none !important;}
-  body.printing-gantt{background:#fff !important;overflow:visible !important;padding:0 !important;margin:0 !important;}
-  body.printing-gantt #printRoot{display:block;}
+  body.printing-chart > *:not(#printRoot){display:none !important;}
+  body.printing-chart{background:#fff !important;overflow:visible !important;padding:0 !important;margin:0 !important;}
+  body.printing-chart #printRoot{display:block;}
   #printRoot,#printRoot *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   #printRoot .gp-page{margin:0 !important;box-shadow:none !important;break-after:page;page-break-after:always;break-inside:avoid;}
   #printRoot .gp-page:last-child{break-after:auto;page-break-after:auto;}
