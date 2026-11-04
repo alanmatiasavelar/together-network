@@ -50,6 +50,7 @@
 
 <script src="config.js"></script>
 <script src="i18n.js"></script>
+<script src="gantt-print.js"></script>
 <script>
 document.getElementById('year').textContent = new Date().getFullYear();
 showConfigBannerIfNeeded();
@@ -144,7 +145,10 @@ function maybeAutoFitActiveTab(){
 function renderChartToolbar(prefix, zoom, exportMode){
   const pngBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-png="${prefix}">⤓ ${t('chart.export_png')}</button>`;
   const svgBtn = `<button type="button" class="btn btn-ghost btn-small" data-export-svg="${prefix}">⤓ ${t('chart.export_svg')}</button>`;
-  const exportBtn = exportMode === 'svg' ? svgBtn : exportMode === 'both' ? pngBtn + svgBtn : pngBtn;
+  const printBtn = prefix === 'gantt'
+    ? `<button type="button" class="btn btn-ghost btn-small" data-print-gantt>🖨 ${t('gantt.print')}</button>`
+    : '';
+  const exportBtn = (exportMode === 'svg' ? svgBtn : exportMode === 'both' ? pngBtn + svgBtn : pngBtn) + printBtn;
   return `
     <div class="chart-toolbar">
       <div class="zoom-group">
@@ -1230,14 +1234,25 @@ function buildGanttExportSvg(){
   const totalDays = Math.round((last + GANTT_DAY_MS - minDate) / GANTT_DAY_MS) + 1;
 
   const FONT = 'Arial, Helvetica, sans-serif';
-  const pad = 20, labelColW = 290, titleH = 58, headerH = 46;
+  const pad = 20, titleH = 58, headerH = 46;
   const dayWidth = Math.max(920 / totalDays, 3);
   const plotW = totalDays * dayWidth;
 
-  const rows = activities.map(a => ({ a, lines: wrapLabel(a.title, 40, 3) }));
-  const maxLines = Math.max(...rows.map(r => r.lines.length));
-  const rowH = maxLines >= 3 ? 68 : maxLines === 2 ? 54 : 40;
-  const bodyH = rows.length * rowH;
+  // Activity names are never cut off. They wrap onto as many lines as needed
+  // (measured with the real font, see gpWrap in gantt-print.js), and the names
+  // column widens — up to 480px — when a name would otherwise need more than
+  // 3 lines. Same rules as the print preview.
+  let labelColW = 290;
+  while (labelColW < 480 && activities.some(a => gpWrap(a.title, labelColW - 18, 13, true).length > 3)) labelColW += 30;
+  let rowTop = 0;
+  const rows = activities.map(a => {
+    const lines = gpWrap(a.title, labelColW - 18, 13, true);
+    const h = Math.max(40, lines.length * 15 + 25);
+    const row = { a, lines, h, top: rowTop };
+    rowTop += h;
+    return row;
+  });
+  const bodyH = rowTop;
   const width = Math.round(pad * 2 + labelColW + plotW);
   const height = Math.round(pad * 2 + titleH + headerH + bodyH);
   const plotX = pad + labelColW;
@@ -1259,8 +1274,7 @@ function buildGanttExportSvg(){
   s += `<line x1="${plotX}" y1="${headerY + 22}" x2="${plotX + plotW}" y2="${headerY + 22}" stroke="#C9D3DA" stroke-width="1"/>`;
 
   rows.forEach((r, idx) => {
-    const y = bodyY + idx * rowH;
-    s += `<rect x="${pad}" y="${y}" width="${labelColW + plotW}" height="${rowH}" fill="${idx % 2 ? '#F7FAFC' : '#ffffff'}"/>`;
+    s += `<rect x="${pad}" y="${bodyY + r.top}" width="${labelColW + plotW}" height="${r.h}" fill="${idx % 2 ? '#F7FAFC' : '#ffffff'}"/>`;
   });
   plan.ticks.forEach(tk => {
     const x = plotX + tk.x;
@@ -1269,13 +1283,13 @@ function buildGanttExportSvg(){
   });
 
   const rowCenterY = {};
-  rows.forEach((r, idx) => {
+  rows.forEach(r => {
     const a = r.a;
-    const y = bodyY + idx * rowH;
-    rowCenterY[a.id] = idx * rowH + rowH / 2;
+    const y = bodyY + r.top;
+    rowCenterY[a.id] = r.top + r.h / 2;
     const n = r.lines.length;
     const blockH = n * 15 + 14;
-    const top = y + (rowH - blockH) / 2;
+    const top = y + (r.h - blockH) / 2;
     r.lines.forEach((ln, k) => {
       s += `<text x="${pad + 8}" y="${top + 12 + k * 15}" font-family="${FONT}" font-size="13" font-weight="700" fill="#2C3742">${escapeHTML(ln)}</text>`;
     });
@@ -1286,7 +1300,7 @@ function buildGanttExportSvg(){
     const start = ganttParseDate(a.start_date), end = ganttParseDate(a.end_date);
     const bx = plotX + Math.round((start - minDate) / GANTT_DAY_MS) * dayWidth;
     const bw = Math.max((Math.round((end - start) / GANTT_DAY_MS) + 1) * dayWidth - 2, 4);
-    s += `<rect x="${bx}" y="${y + 10}" width="${bw}" height="${rowH - 20}" rx="4" fill="#3E8FD0" stroke="#1F5C93" stroke-width="1"/>`;
+    s += `<rect x="${bx}" y="${y + 10}" width="${bw}" height="${r.h - 20}" rx="4" fill="#3E8FD0" stroke="#1F5C93" stroke-width="1"/>`;
   });
 
   s += `<line x1="${plotX}" y1="${headerY}" x2="${plotX}" y2="${bodyY + bodyH}" stroke="#C9D3DA" stroke-width="1"/>`;
@@ -4106,6 +4120,7 @@ function wireEvents(){
     if (btn.dataset.exportPng === 'gantt') exportGanttPng();
     else exportWbsPng();
   }));
+  content.querySelectorAll('[data-print-gantt]').forEach(btn => btn.addEventListener('click', openGanttPrintPreview));
   content.querySelectorAll('[data-export-svg]').forEach(btn => btn.addEventListener('click', () => {
     const prefix = btn.dataset.exportSvg;
     if (prefix === 'gantt') exportGanttSvg();

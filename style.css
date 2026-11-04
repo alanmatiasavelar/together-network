@@ -1280,3 +1280,36 @@ summary:focus-visible,[tabindex]:focus-visible{
 .fn-defs{margin-top:16px;font-size:13px;}
 .fn-defs summary{cursor:pointer;color:var(--blue-deep);font-weight:600;}
 @media (max-width:560px){ .fn-row{grid-template-columns:1fr 1fr 36px 44px;} }
+
+/* ---------- Gantt print preview ---------- */
+body.gp-open{overflow:hidden;}
+.gp-overlay{position:fixed;inset:0;z-index:3000;background:rgba(30,38,46,.62);display:flex;align-items:stretch;justify-content:center;padding:16px;}
+.gp-panel{display:flex;width:100%;max-width:1400px;background:var(--paper);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);}
+.gp-controls{flex:0 0 290px;padding:22px 20px;overflow-y:auto;border-right:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:16px;}
+.gp-controls h3{font-size:18px;}
+.gp-controls label,.gp-controls legend{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;}
+.gp-controls fieldset{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;}
+.gp-controls select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff;}
+.gp-controls .gp-radio{flex-direction:row;align-items:center;font-weight:400;gap:8px;}
+.gp-controls .gp-radio input{width:auto;}
+.gp-actions{display:flex;gap:10px;margin-top:auto;padding-top:8px;}
+.gp-stage{flex:1;min-width:0;overflow:auto;background:#C9D1D7;padding:16px;}
+.gp-pages{display:flex;flex-direction:column;align-items:center;gap:14px;}
+.gp-page{background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25);line-height:0;}
+.gp-page svg{display:block;}
+@media(max-width:820px){
+  .gp-overlay{padding:0;}
+  .gp-panel{flex-direction:column;border-radius:0;}
+  .gp-controls{flex:0 0 auto;max-height:42%;border-right:0;border-bottom:1px solid var(--line);}
+}
+
+/* printing: only the generated pages */
+#printRoot{display:none;}
+@media print{
+  body.printing-gantt > *:not(#printRoot){display:none !important;}
+  body.printing-gantt{background:#fff !important;overflow:visible !important;padding:0 !important;margin:0 !important;}
+  body.printing-gantt #printRoot{display:block;}
+  #printRoot,#printRoot *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  #printRoot .gp-page{margin:0 !important;box-shadow:none !important;break-after:page;page-break-after:always;break-inside:avoid;}
+  #printRoot .gp-page:last-child{break-after:auto;page-break-after:auto;}
+}
